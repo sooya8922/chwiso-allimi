@@ -37,3 +37,5 @@ jobs:
           git add chwiso.db transitions.jsonl
           git commit -m "poll $(date -u +%FT%TZ)" || echo "변화 없음 - 커밋 스킵"
           git push || echo "push 실패 (다음 회차에 재시도)"
+
+# touch 2026-06-25T09:28:27Z
