@@ -1,0 +1,13 @@
+# Railway 배포 설정 — 항상 켜진 2분 간격 폴러(웹 아님, 워커).
+# 데이터는 Railway 로그(EVT OPEN/CLOSE 라인)로 검증한다. 영속 디스크 불필요:
+# 재시작 시 baseline은 조용히 재구축되고(첫 폴은 prev 없어 이벤트 미발생) 중복 없음.
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python3 -u poller.py --interval 120"
+# 크래시 시에만 재시작(정상 종료는 없음 — 무한 루프)
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+numReplicas = 1

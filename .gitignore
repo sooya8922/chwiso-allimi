@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 .env
+.seoul_key
+validation.db
+highres.log
+.omc/

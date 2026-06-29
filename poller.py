@@ -149,6 +149,11 @@ def poll_once(conn):
                         VALUES(?,?,?,?,?,?,?,?)""",
                         (svcid, r.get("SVCNM"), r.get("AREANM"), prev_status, status, win, now_s, r.get("SVCURL")))
                     transitions.append((r.get("AREANM"), r.get("SVCNM"), prev_status, status, win))
+                    # dwell 측정용 stdout 이벤트 (상시호스트 로그에서 OPEN/CLOSE 매칭)
+                    print(f"EVT {now_s} OPEN  {svcid} [{r.get('AREANM')}] {r.get('SVCNM')}", flush=True)
+                # 접수중 → 닫힘 = 열린 슬롯이 채워짐(또는 기간종료). dwell의 끝점.
+                elif prev_status in OPEN_STATES and status in CLOSED_STATES:
+                    print(f"EVT {now_s} CLOSE {svcid} [{r.get('AREANM')}] {r.get('SVCNM')}", flush=True)
 
             conn.execute("""INSERT INTO service_current
                 (svcid,category,svcnm,area,minclass,status,rcptbgn,rcptend,x,y,svcurl,updated_at)

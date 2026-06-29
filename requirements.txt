@@ -1,0 +1,2 @@
+# poller.py는 파이썬 표준 라이브러리만 사용 (외부 의존성 없음).
+# 이 파일은 Railway/Nixpacks가 Python 프로젝트로 인식하게 하기 위한 마커.
