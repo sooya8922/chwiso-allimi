@@ -33,8 +33,17 @@ jobs:
       - name: Test (라이브 feed 통합 포함)
         run: flutter test
 
-      - name: Build APK (release, debug-signed → 실기기 설치용)
+      - name: Restore signing keystore (고정 업로드키 — 업데이트 설치 호환)
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/upload-keystore.p12
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+
+      - name: Build APK (release, 고정키 서명)
         run: flutter build apk --release
+        env:
+          KEYSTORE_PATH: /tmp/upload-keystore.p12
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

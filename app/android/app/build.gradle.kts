@@ -27,11 +27,26 @@ android {
         versionName = flutter.versionName
     }
 
+    // 고정 업로드 키 (CI가 KEYSTORE_PATH/KEYSTORE_PASSWORD env로 주입).
+    // 러너마다 임시 debug키가 새로 생겨 업데이트 설치가 거부되던 문제(M4 실측)의 근본 해결.
+    val ciKeystorePath: String? = System.getenv("KEYSTORE_PATH")
+    signingConfigs {
+        if (ciKeystorePath != null) {
+            create("upload") {
+                storeFile = file(ciKeystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = "upload"
+                keyPassword = System.getenv("KEYSTORE_PASSWORD")
+                storeType = "PKCS12"
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // CI: 고정 upload 키 / 로컬(키 없음): debug 키 폴백
+            signingConfig = if (ciKeystorePath != null) signingConfigs.getByName("upload")
+                            else signingConfigs.getByName("debug")
             // M4 실기기 크래시 대응: R8 축소가 flutter_local_notifications 내부(GSON TypeToken)를
             // 제거해 시작 크래시를 유발하는 알려진 문제 → MVP는 축소 비활성(+proguard 규칙도 동봉).
             isMinifyEnabled = false
