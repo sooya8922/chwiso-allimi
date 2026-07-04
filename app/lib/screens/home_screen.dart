@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../logic/matcher.dart';
@@ -16,7 +17,10 @@ class HomeScreen extends StatefulWidget {
   /// feed 로드/필터 변경 성공 시 호출 — main이 알림 재계획을 꽂는다(테스트에선 null).
   final Future<void> Function(Feed feed)? onFeedLoaded;
 
-  const HomeScreen({super.key, this.feedService, this.prefsService, this.onFeedLoaded});
+  /// 알림/백그라운드 초기화 오류(진단용 배너). null이면 정상.
+  final ValueListenable<String?>? initError;
+
+  const HomeScreen({super.key, this.feedService, this.prefsService, this.onFeedLoaded, this.initError});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -136,6 +140,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Column(
       children: [
+        // 알림 초기화 실패 진단 배너 (앱은 계속 사용 가능)
+        if (widget.initError != null)
+          ValueListenableBuilder<String?>(
+            valueListenable: widget.initError!,
+            builder: (ctx, err, _) => err == null
+                ? const SizedBox.shrink()
+                : Container(
+                    width: double.infinity,
+                    color: Theme.of(ctx).colorScheme.errorContainer,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: Text('⚠️ $err', maxLines: 3, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11)),
+                  ),
+          ),
         if (_fromCache)
           Container(
             width: double.infinity,

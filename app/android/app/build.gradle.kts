@@ -32,6 +32,11 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // M4 실기기 크래시 대응: R8 축소가 flutter_local_notifications 내부(GSON TypeToken)를
+            // 제거해 시작 크래시를 유발하는 알려진 문제 → MVP는 축소 비활성(+proguard 규칙도 동봉).
+            isMinifyEnabled = false
+            isShrinkResources = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
