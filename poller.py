@@ -34,7 +34,15 @@ import sqlite3
 import sys
 import time
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# 서울 데이터의 모든 일시는 KST. GitHub Actions 러너는 UTC라 datetime.now()를 쓰면
+# in_window/upcoming 판정이 9시간 틀어진다 → 항상 KST로 고정.
+KST = timezone(timedelta(hours=9))
+
+
+def now_kst():
+    return datetime.now(KST).replace(tzinfo=None)
 
 # ── 설정 ────────────────────────────────────────────────────────────────
 API_KEY = os.environ.get("SEOUL_API_KEY", "sample")  # sample = 5건 제한(테스트용)
@@ -70,6 +78,13 @@ def db():
     conn.execute("""CREATE TABLE IF NOT EXISTS transition_log(
         id INTEGER PRIMARY KEY AUTOINCREMENT, svcid TEXT, svcnm TEXT, area TEXT,
         from_status TEXT, to_status TEXT, in_window INTEGER, observed_at TEXT, svcurl TEXT)""")
+    # 스키마 마이그레이션: 구버전 DB(기존 repo의 chwiso.db)에 새 컬럼 추가.
+    # first_seen은 신규강좌 감지용 — 기존 행은 NULL(=레거시, 신규 아님)로 남는다.
+    for col in ("payat TEXT", "usetgt TEXT", "imgurl TEXT", "first_seen TEXT"):
+        try:
+            conn.execute(f"ALTER TABLE service_current ADD COLUMN {col}")
+        except sqlite3.OperationalError:
+            pass  # 이미 있음
     conn.commit()
     return conn
 
@@ -121,7 +136,7 @@ def in_window(rcptbgn, rcptend, now):
 
 # ── 1회 폴링 ─────────────────────────────────────────────────────────────
 def poll_once(conn):
-    now = datetime.now()
+    now = now_kst()
     now_s = now.strftime("%Y-%m-%d %H:%M:%S")
     transitions, counts = [], {}
     seen = 0
@@ -156,12 +171,16 @@ def poll_once(conn):
                     print(f"EVT {now_s} CLOSE {svcid} [{r.get('AREANM')}] {r.get('SVCNM')}", flush=True)
 
             conn.execute("""INSERT INTO service_current
-                (svcid,category,svcnm,area,minclass,status,rcptbgn,rcptend,x,y,svcurl,updated_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                (svcid,category,svcnm,area,minclass,status,rcptbgn,rcptend,x,y,svcurl,updated_at,
+                 payat,usetgt,imgurl,first_seen)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(svcid) DO UPDATE SET status=excluded.status,
-                    rcptbgn=excluded.rcptbgn, rcptend=excluded.rcptend, updated_at=excluded.updated_at""",
+                    svcnm=excluded.svcnm, area=excluded.area, minclass=excluded.minclass,
+                    rcptbgn=excluded.rcptbgn, rcptend=excluded.rcptend, updated_at=excluded.updated_at,
+                    payat=excluded.payat, usetgt=excluded.usetgt, imgurl=excluded.imgurl""",
                 (svcid, service, r.get("SVCNM"), r.get("AREANM"), r.get("MINCLASSNM"), status,
-                 r.get("RCPTBGNDT"), r.get("RCPTENDDT"), r.get("X"), r.get("Y"), r.get("SVCURL"), now_s))
+                 r.get("RCPTBGNDT"), r.get("RCPTENDDT"), r.get("X"), r.get("Y"), r.get("SVCURL"), now_s,
+                 r.get("PAYATNM"), r.get("USETGTINFO"), r.get("IMGURL"), now_s))
     conn.commit()
     print(f"[{now_s}] 수집 {seen}건 | 상태분포: {counts}")
     if transitions:

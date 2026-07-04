@@ -1,9 +1,10 @@
 name: poll-yeyak
 
-# 5분마다 자동 폴링 (GitHub Actions cron 최소 간격 5분, 다소 지연될 수 있음)
+# 하루 4회 수집 (yeyak 상태는 하루 1~2회 배치 갱신이라 충분 — 22.5h 실측 근거).
+# KST 09:07 / 14:07 / 21:07(20:20 메인배치 직후) / 02:07. GH cron 지연/스킵 허용.
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "7 0,5,12,17 * * *"
   workflow_dispatch: {}   # 수동 실행 버튼도 제공
 
 # 동시 실행 방지 (DB 충돌 방지)
@@ -30,11 +31,18 @@ jobs:
           CATEGORIES: education,culture   # 선착순 모집형만 (시설형 제외)
         run: python3 poller.py
 
+      - name: Build feed.json
+        run: python3 make_feed.py
+
+      - name: Sanity check feed
+        run: |
+          python3 -c "import json; f=json.load(open('feed.json')); assert f['version']==1 and f['counts']['courses']>100, f['counts']; print('feed OK:', f['counts'])"
+
       - name: Commit results
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add chwiso.db transitions.jsonl
+          git add chwiso.db transitions.jsonl feed.json
           git commit -m "poll $(date -u +%FT%TZ)" || echo "변화 없음 - 커밋 스킵"
           git push || echo "push 실패 (다음 회차에 재시도)"
 
