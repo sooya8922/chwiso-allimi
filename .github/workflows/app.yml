@@ -45,6 +45,13 @@ jobs:
           KEYSTORE_PATH: /tmp/upload-keystore.p12
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
+      - name: Verify signature (고정키 CN 확인 — 임시키로 새면 여기서 실패)
+        run: |
+          APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | tail -1)
+          $APKSIGNER verify --print-certs build/app/outputs/flutter-apk/app-release.apk | head -3
+          $APKSIGNER verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep -q "Yeollim Allim"
+          echo "✅ 고정 업로드키 서명 확인"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
