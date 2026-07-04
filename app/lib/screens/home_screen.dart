@@ -13,7 +13,10 @@ class HomeScreen extends StatefulWidget {
   final FeedService? feedService;
   final PrefsService? prefsService;
 
-  const HomeScreen({super.key, this.feedService, this.prefsService});
+  /// feed 로드/필터 변경 성공 시 호출 — main이 알림 재계획을 꽂는다(테스트에선 null).
+  final Future<void> Function(Feed feed)? onFeedLoaded;
+
+  const HomeScreen({super.key, this.feedService, this.prefsService, this.onFeedLoaded});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -47,6 +50,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _feed = r.feed;
         _fromCache = r.fromCache;
       });
+      // 알림 재계획(주입된 경우만). 실패해도 화면은 정상 동작해야 하므로 삼킨다.
+      try {
+        await widget.onFeedLoaded?.call(r.feed);
+      } catch (_) {}
     } catch (e) {
       setState(() => _error = e);
     }
@@ -67,6 +74,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (result != null) {
       setState(() => _sub = result);
       await _prefsSvc.save(result);
+      // 조건이 바뀌면 알람 대상도 바뀐다 → 재계획
+      final f = _feed;
+      if (f != null) {
+        try {
+          await widget.onFeedLoaded?.call(f);
+        } catch (_) {}
+      }
     }
   }
 

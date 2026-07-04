@@ -1,0 +1,100 @@
+/// 플랫폼 알림 래퍼 — flutter_local_notifications 호출을 여기 격리.
+/// 계획(무엇을/언제)은 notif_planner.dart 순수함수가 만들고, 여기는 실행만 한다.
+library;
+
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
+import 'package:url_launcher/url_launcher.dart';
+
+import '../logic/notif_planner.dart';
+
+class NotificationService {
+  static final _plugin = FlutterLocalNotificationsPlugin();
+  static bool _inited = false;
+
+  static const _instantChannel = AndroidNotificationDetails(
+    'instant', '새 강좌·재오픈 알림',
+    channelDescription: '조건에 맞는 강좌가 새로 열리면 알림',
+    importance: Importance.high, priority: Priority.high,
+  );
+  static const _alarmChannel = AndroidNotificationDetails(
+    'open_alarm', '접수 오픈 알람',
+    channelDescription: '접수 시작 10분 전 알람',
+    importance: Importance.max, priority: Priority.max,
+    category: AndroidNotificationCategory.alarm,
+  );
+
+  /// 데이터/알람 일시는 전부 KST(서울 강좌) — 기기 TZ와 무관하게 고정.
+  static Future<void> init() async {
+    if (_inited) return;
+    tzdata.initializeTimeZones();
+    tz.setLocalLocation(tz.getLocation('Asia/Seoul'));
+    await _plugin.initialize(
+      settings: const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      ),
+      onDidReceiveNotificationResponse: _onTap,
+    );
+    _inited = true;
+  }
+
+  static void _onTap(NotificationResponse resp) {
+    final url = resp.payload;
+    if (url != null && url.startsWith('http')) {
+      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    }
+  }
+
+  /// Android 13+ 알림 권한 요청. 결과: 허용 여부(다른 플랫폼/버전은 true 취급)
+  static Future<bool> requestPermission() async {
+    await init();
+    final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true;
+    final granted = await android.requestNotificationsPermission();
+    return granted ?? true;
+  }
+
+  static Future<void> showInstant(PlannedNotification n) async {
+    await init();
+    await _plugin.show(
+      id: stableId(n.key),
+      title: n.title,
+      body: n.body,
+      notificationDetails: const NotificationDetails(android: _instantChannel),
+      payload: n.url,
+    );
+  }
+
+  /// 알람 재계획: 기존 예약 전부 취소 후 새 계획으로 예약(피드가 바뀌었을 수 있으므로).
+  /// 정확알람 권한이 없으면 inexact로 폴백(늦을 수 있지만 안 울리는 것보단 낫다).
+  static Future<void> rescheduleAlarms(List<PlannedAlarm> alarms) async {
+    await init();
+    // 예약(pending)만 개별 취소 — 이미 표시된 알림은 건드리지 않는다
+    for (final p in await _plugin.pendingNotificationRequests()) {
+      await _plugin.cancel(id: p.id);
+    }
+    final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final exactOk = await android?.canScheduleExactNotifications() ?? false;
+    for (final a in alarms) {
+      // a.at은 KST 월클럭(naive). TZDateTime.from은 기기 TZ의 epoch로 해석해버리므로
+      // (해외 기기 엣지) 성분으로 Asia/Seoul 시각을 직접 조립한다.
+      final atKst = tz.TZDateTime(tz.local, a.at.year, a.at.month, a.at.day, a.at.hour, a.at.minute, a.at.second);
+      await _plugin.zonedSchedule(
+        id: a.id,
+        title: a.title,
+        body: a.body,
+        scheduledDate: atKst,
+        notificationDetails: const NotificationDetails(android: _alarmChannel),
+        androidScheduleMode:
+            exactOk ? AndroidScheduleMode.exactAllowWhileIdle : AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: a.url,
+      );
+    }
+  }
+
+  static Future<int> pendingCount() async {
+    await init();
+    return (await _plugin.pendingNotificationRequests()).length;
+  }
+}
