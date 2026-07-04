@@ -17,8 +17,9 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.sooya8922.yeollim_allim"
+        // v0.2.0에서 ID 변경: 구버전(yeollim_allim)의 서명 충돌/잔재와 원천 분리.
+        // (M4 실측: 잔재 패키지 때문에 '앱이 설치되지 않음' 지속 → 새 ID로 우회, 스토어 정식 ID로 확정)
+        applicationId = "com.sooya8922.yeollim"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
