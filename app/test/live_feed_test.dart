@@ -5,6 +5,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:yeollim_allim/logic/matcher.dart';
+import 'package:yeollim_allim/logic/notif_planner.dart';
 import 'package:yeollim_allim/models/course.dart';
 
 void main() {
@@ -35,5 +37,29 @@ void main() {
       expect(u.openAtDt, isNotNull, reason: '${u.id}: open_at=${u.openAt}');
       expect(u.leadMin, greaterThan(0));
     }
+  });
+
+  test('실제 feed로 알림 플래너 구동(파이프라인→알림 전 구간)', () {
+    if (!feedFile.existsSync()) {
+      markTestSkipped('feed.json 없음 — 스킵');
+      return;
+    }
+    final feed = Feed.fromJson(json.decode(feedFile.readAsStringSync()) as Map<String, dynamic>);
+    final now = kstNow();
+
+    // 알람 계획: 상한 준수 + 전부 미래 + id 중복 없음
+    final alarms = planAlarms(feed, const Subscription(), now);
+    expect(alarms.length, lessThanOrEqualTo(maxScheduledAlarms));
+    for (final a in alarms) {
+      expect(a.at.isAfter(now), true, reason: '${a.svcid}: ${a.at}');
+    }
+    expect(alarms.map((a) => a.id).toSet().length, alarms.length, reason: '알람 id 충돌');
+
+    // 즉시알림 계획: 크래시 없이 생성 + 재실행 시 중복 0 (멱등성)
+    final notified = <String>{};
+    final first = planInstantNotifications(feed, const Subscription(), notified);
+    notified.addAll(first.map((n) => n.key));
+    final second = planInstantNotifications(feed, const Subscription(), notified);
+    expect(second, isEmpty, reason: '같은 feed 재처리 시 중복 발송되면 안 됨');
   });
 }
