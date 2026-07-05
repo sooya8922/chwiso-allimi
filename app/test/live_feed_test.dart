@@ -56,10 +56,13 @@ void main() {
     expect(alarms.map((a) => a.id).toSet().length, alarms.length, reason: '알람 id 충돌');
 
     // 즉시알림 계획: 크래시 없이 생성 + 재실행 시 중복 0 (멱등성)
-    final notified = <String>{};
-    final first = planInstantNotifications(feed, const Subscription(), notified);
-    notified.addAll(first.map((n) => n.key));
-    final second = planInstantNotifications(feed, const Subscription(), notified);
-    expect(second, isEmpty, reason: '같은 feed 재처리 시 중복 발송되면 안 됨');
+    final first = planInstantNotifications(feed, const Subscription(), <String>{});
+    final second = planInstantNotifications(feed, const Subscription(), first.allKeys);
+    expect(second.toShow, isEmpty, reason: '같은 feed 재처리(allKeys 저장 후) 시 중복 발송되면 안 됨');
+
+    // M4 실기기 버그 회귀 방지: 같은 강좌가 재오픈 이벤트 여러 건이어도 발송은 강좌당 1건
+    final shownIds = first.toShow.map((n) => n.key.split('_')[1]).toList();
+    expect(shownIds.toSet().length, shownIds.length,
+        reason: '실제 feed(중복 강좌 32개)에서 같은 강좌 2회 발송되면 안 됨');
   });
 }

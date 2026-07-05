@@ -32,23 +32,40 @@ void callbackDispatcher() {
   });
 }
 
+const _lastRunKey = 'notify_run_ts_v1';
+
 /// 공용 갱신 루틴 — 포그라운드(앱 열림)와 백그라운드 양쪽에서 호출.
 Future<void> refreshAndNotify({Feed? preloaded}) async {
   final feed = preloaded ?? (await FeedService().load()).feed;
   final sub = await PrefsService().load();
 
   final sp = await SharedPreferences.getInstance();
-  final notified = ((json.decode(sp.getString(_notifiedKey) ?? '[]') as List).map((e) => e.toString())).toSet();
 
   // 1) 즉시 알림 (신규/재오픈)
-  final instants = planInstantNotifications(feed, sub, notified);
-  for (final n in instants) {
-    await NotificationService.showInstant(n);
-    notified.add(n.key);
+  // 이중 실행 가드: 앱 오픈과 WorkManager가 거의 동시에 돌면(별도 isolate라 메모리 락 불가)
+  // 같은 알림이 두 번 나간다 → 60초 내 재실행이면 즉시알림 파트는 스킵(알람 재예약은 멱등이라 진행).
+  final nowMs = DateTime.now().millisecondsSinceEpoch;
+  final lastMs = sp.getInt(_lastRunKey) ?? 0;
+  if ((nowMs - lastMs).abs() > 60000) {
+    await sp.setInt(_lastRunKey, nowMs); // 먼저 마킹해 레이스 창 최소화
+    final storedRaw = sp.getString(_notifiedKey);
+    final notified =
+        ((json.decode(storedRaw ?? '[]') as List).map((e) => e.toString())).toSet();
+    final plan = planInstantNotifications(feed, sub, notified);
+    if (storedRaw != null) {
+      // 평상시: 새 이벤트만 발송
+      for (final n in plan.toShow) {
+        await NotificationService.showInstant(n);
+      }
+    }
+    // 첫 실행(storedRaw == null)은 발송 없이 기준선만 저장 — 설치 직후
+    // "지난 7일치 재오픈 알림 폭탄"(M4 실기기 실측) 방지.
+    // 발송 여부와 무관하게 이번 feed의 모든 키를 '본 것'으로 저장:
+    // 사라진 이벤트 키는 자연히 정리되고, 억제(쿨다운/조건 밖) 이벤트도 소급 발화하지 않는다.
+    await sp.setString(_notifiedKey, json.encode(plan.allKeys.toList()));
   }
-  await sp.setString(_notifiedKey, json.encode(pruneNotified(notified, feed).toList()));
 
-  // 2) 광클 알람 재예약 (now도 KST로 — 기기 TZ 무관)
+  // 2) 광클 알람 재예약 (now도 KST로 — 기기 TZ 무관, 재예약은 멱등)
   final alarms = planAlarms(feed, sub, kstNow());
   await NotificationService.rescheduleAlarms(alarms);
 }

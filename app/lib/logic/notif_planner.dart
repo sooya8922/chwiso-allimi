@@ -50,11 +50,31 @@ int stableId(String svcid) {
   return h;
 }
 
+/// 즉시 알림 계획 결과.
+/// [toShow]: 지금 발송할 알림. [allKeys]: 이번 feed의 모든 이벤트 키 —
+/// 발송 여부와 무관하게 전부 '본 것'으로 저장해야 한다(조건 변경/상태 변화가
+/// 과거 이벤트를 소급 발화시키는 엣지 방지).
+class InstantPlan {
+  final List<PlannedNotification> toShow;
+  final Set<String> allKeys;
+
+  const InstantPlan({required this.toShow, required this.allKeys});
+}
+
 /// 1) 신규/재오픈 즉시 알림 계획.
-/// [notified]: 이미 보낸 키 셋 — 여기 있는 건 다시 안 보낸다(호출측이 저장/로드).
-List<PlannedNotification> planInstantNotifications(Feed feed, Subscription sub, Set<String> notified) {
+/// [notified]: 이미 본 키 셋 — 여기 있는 건 다시 안 보낸다(호출측이 저장/로드).
+///
+/// 중복 방지 3중(M4 실기기에서 발견된 알림 폭탄/중복의 수정):
+///  a. 강좌당 최신 재오픈 이벤트 1건만 (같은 강좌가 7일 윈도우에 2~3회 재오픈하는 게 실측 32/121)
+///  b. 쿨다운: 이 강좌의 다른 재오픈 이벤트를 이미 알렸으면(그 이벤트가 아직 feed에 있는 동안) 억제
+///  c. 첫 실행은 호출측이 allKeys만 저장하고 발송 안 함(설치 직후 지난 7일치 폭탄 방지)
+InstantPlan planInstantNotifications(Feed feed, Subscription sub, Set<String> notified) {
   final byId = {for (final c in feed.courses) c.id: c};
   final out = <PlannedNotification>[];
+  final allKeys = <String>{
+    ...feed.newCourses.map((n) => 'new_${n.id}'),
+    ...feed.reopened.map((r) => 'reopen_${r.id}_${r.at}'),
+  };
 
   for (final n in feed.newCourses) {
     final key = 'new_${n.id}';
@@ -70,10 +90,18 @@ List<PlannedNotification> planInstantNotifications(Feed feed, Subscription sub, 
     ));
   }
 
+  // 재오픈: 강좌별로 묶어 최신 이벤트 1건만 평가 (a)
+  final latestByCourse = <String, ReopenEvent>{};
   for (final r in feed.reopened) {
+    final cur = latestByCourse[r.id];
+    if (cur == null || r.at.compareTo(cur.at) > 0) latestByCourse[r.id] = r;
+  }
+  for (final r in latestByCourse.values) {
     if (!r.inWindow) continue; // 접수기간 밖 재오픈은 신청 불가 → 알림 가치 없음
     final key = 'reopen_${r.id}_${r.at}';
     if (notified.contains(key)) continue;
+    // 쿨다운 (b): 같은 강좌의 다른 재오픈을 이미 알렸으면 억제
+    if (notified.any((k) => k.startsWith('reopen_${r.id}_'))) continue;
     final c = byId[r.id];
     if (c != null && !matches(c, sub)) continue;
     if (c == null && !sub.isEmpty) continue;
@@ -86,7 +114,7 @@ List<PlannedNotification> planInstantNotifications(Feed feed, Subscription sub, 
       url: c?.url ?? '',
     ));
   }
-  return out;
+  return InstantPlan(toShow: out, allKeys: allKeys);
 }
 
 /// 2) 광클 알람 계획. 반환은 시각 오름차순, 상한 [maxScheduledAlarms]개.
@@ -120,14 +148,4 @@ List<PlannedAlarm> planAlarms(Feed feed, Subscription sub, DateTime now) {
 
   out.sort((a, b) => a.at.compareTo(b.at));
   return out.length > maxScheduledAlarms ? out.sublist(0, maxScheduledAlarms) : out;
-}
-
-/// notified 키 셋 정리 — feed에서 사라진 지 오래된 키가 무한히 쌓이는 것 방지.
-/// 현재 feed에서 다시 만들 수 있는 키만 유지한다(사라진 키는 재발송 위험도 없음).
-Set<String> pruneNotified(Set<String> notified, Feed feed) {
-  final valid = <String>{
-    ...feed.newCourses.map((n) => 'new_${n.id}'),
-    ...feed.reopened.map((r) => 'reopen_${r.id}_${r.at}'),
-  };
-  return notified.intersection(valid);
 }

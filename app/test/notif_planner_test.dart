@@ -37,7 +37,7 @@ void main() {
         'courses': [course('S1', name: '새강좌')],
         'new': [{'id': 'S1', 'name': '새강좌', 'area': '마포구', 'status': '접수중', 'seen_at': '2026-07-04 09:00'}],
       });
-      final out = planInstantNotifications(f, const Subscription(), {});
+      final out = planInstantNotifications(f, const Subscription(), {}).toShow;
       expect(out.length, 1);
       expect(out[0].key, 'new_S1');
       expect(out[0].url, contains('yeyak'));
@@ -48,7 +48,7 @@ void main() {
         'courses': [course('S1')],
         'new': [{'id': 'S1', 'name': 'x', 'area': '', 'status': '접수중', 'seen_at': ''}],
       });
-      expect(planInstantNotifications(f, const Subscription(), {'new_S1'}), isEmpty);
+      expect(planInstantNotifications(f, const Subscription(), {'new_S1'}).toShow, isEmpty);
     });
 
     test('엣지: 구독조건 불일치 신규는 스킵', () {
@@ -56,15 +56,15 @@ void main() {
         'courses': [course('S1', area: '강남구')],
         'new': [{'id': 'S1', 'name': 'x', 'area': '강남구', 'status': '접수중', 'seen_at': ''}],
       });
-      expect(planInstantNotifications(f, const Subscription(areas: {'마포구'}), {}), isEmpty);
+      expect(planInstantNotifications(f, const Subscription(areas: {'마포구'}), {}).toShow, isEmpty);
     });
 
     test('엣지: courses에 없는 신규(고아) — 조건 없으면 발송, 있으면 보수적 스킵', () {
       final f = feedFrom({
         'new': [{'id': 'S9', 'name': '고아', 'area': '', 'status': '접수중', 'seen_at': ''}],
       });
-      expect(planInstantNotifications(f, const Subscription(), {}).length, 1);
-      expect(planInstantNotifications(f, const Subscription(freeOnly: true), {}), isEmpty);
+      expect(planInstantNotifications(f, const Subscription(), {}).toShow.length, 1);
+      expect(planInstantNotifications(f, const Subscription(freeOnly: true), {}).toShow, isEmpty);
     });
   });
 
@@ -74,19 +74,19 @@ void main() {
 
     test('기본: in_window 재오픈 + 현재 접수중 → 알림', () {
       final f = feedFrom({'courses': [course('S1')], 'reopened': [reopen('S1')]});
-      final out = planInstantNotifications(f, const Subscription(), {});
+      final out = planInstantNotifications(f, const Subscription(), {}).toShow;
       expect(out.length, 1);
       expect(out[0].key, startsWith('reopen_S1'));
     });
 
     test('엣지: 접수기간 밖(in_window=0) 재오픈은 스킵', () {
       final f = feedFrom({'courses': [course('S1')], 'reopened': [reopen('S1', inWindow: 0)]});
-      expect(planInstantNotifications(f, const Subscription(), {}), isEmpty);
+      expect(planInstantNotifications(f, const Subscription(), {}).toShow, isEmpty);
     });
 
     test('엣지: 재오픈 후 이미 다시 마감된 강좌는 스킵(헛알림 방지)', () {
       final f = feedFrom({'courses': [course('S1', status: '예약마감')], 'reopened': [reopen('S1')]});
-      expect(planInstantNotifications(f, const Subscription(), {}), isEmpty);
+      expect(planInstantNotifications(f, const Subscription(), {}).toShow, isEmpty);
     });
   });
 
@@ -154,13 +154,53 @@ void main() {
     });
   });
 
-  group('pruneNotified', () {
-    test('feed에서 사라진 키 제거, 살아있는 키 유지', () {
+  group('재오픈 중복 방지(M4 실기기 버그 고정)', () {
+    Map<String, dynamic> reopenAt(String id, String at) =>
+        {'id': id, 'name': 'r', 'area': '강남구', 'in_window': 1, 'at': at};
+
+    test('같은 강좌 이벤트 3건(대모산 케이스) → 최신 1건만 발송', () {
       final f = feedFrom({
-        'new': [{'id': 'S1', 'name': '', 'area': '', 'status': '', 'seen_at': ''}],
+        'courses': [course('S1')],
+        'reopened': [reopenAt('S1', '2026-06-29 14:51'), reopenAt('S1', '2026-07-05 18:48'),
+                     reopenAt('S1', '2026-07-02 10:16')],
       });
-      final pruned = pruneNotified({'new_S1', 'new_GONE', 'reopen_GONE_x'}, f);
-      expect(pruned, {'new_S1'});
+      final plan = planInstantNotifications(f, const Subscription(), {});
+      expect(plan.toShow.length, 1);
+      expect(plan.toShow[0].key, 'reopen_S1_2026-07-05 18:48');
+      // allKeys에는 3건 전부 (억제된 것도 '본 것'으로)
+      expect(plan.allKeys.where((k) => k.startsWith('reopen_S1_')).length, 3);
+    });
+
+    test('쿨다운: 같은 강좌의 이전 이벤트를 이미 알렸으면 새 이벤트 억제', () {
+      final f = feedFrom({
+        'courses': [course('S1')],
+        'reopened': [reopenAt('S1', '2026-07-05 18:48')],
+      });
+      final plan = planInstantNotifications(
+          f, const Subscription(), {'reopen_S1_2026-07-02 10:16'});
+      expect(plan.toShow, isEmpty, reason: '이전 이벤트 키가 남아있는 동안 재알림 금지');
+    });
+
+    test('쿨다운 해제: 이전 이벤트가 7일 지나 feed에서 빠지면(키 정리 후) 새 이벤트 발송', () {
+      // 호출측이 allKeys만 저장하므로, 사라진 이벤트 키는 자동 정리된 상태를 시뮬레이션
+      final f = feedFrom({
+        'courses': [course('S1')],
+        'reopened': [reopenAt('S1', '2026-07-20 10:00')],
+      });
+      final plan = planInstantNotifications(f, const Subscription(), <String>{});
+      expect(plan.toShow.length, 1);
+    });
+
+    test('첫 실행 시맨틱: allKeys는 조건 불일치·마감 이벤트도 전부 포함', () {
+      final f = feedFrom({
+        'courses': [course('S1', area: '강남구'), course('S2', status: '예약마감')],
+        'new': [{'id': 'S1', 'name': 'x', 'area': '강남구', 'status': '접수중', 'seen_at': ''}],
+        'reopened': [reopenAt('S2', '2026-07-05 10:00')],
+      });
+      final plan = planInstantNotifications(f, const Subscription(areas: {'마포구'}), {});
+      expect(plan.toShow, isEmpty);
+      expect(plan.allKeys, {'new_S1', 'reopen_S2_2026-07-05 10:00'},
+          reason: '억제된 이벤트도 기준선에 저장 — 조건 변경 시 소급 발화 방지');
     });
   });
 
