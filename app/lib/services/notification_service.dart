@@ -97,4 +97,17 @@ class NotificationService {
     await init();
     return (await _plugin.pendingNotificationRequests()).length;
   }
+
+  /// 진단용: 정확알람 권한 상태 (M4 — 기기 설정 메뉴가 기종마다 달라 앱에서 직접 확인)
+  static Future<bool> canExact() async {
+    await init();
+    final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    return await android?.canScheduleExactNotifications() ?? false;
+  }
+
+  /// 진단용: 예약된 알람 목록
+  static Future<List<PendingNotificationRequest>> pendingList() async {
+    await init();
+    return _plugin.pendingNotificationRequests();
+  }
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../logic/matcher.dart';
 import '../models/course.dart';
 import '../services/feed_service.dart';
+import '../services/notification_service.dart';
 import '../services/prefs_service.dart';
 import '../widgets/course_card.dart';
 import '../widgets/filter_sheet.dart';
@@ -88,6 +89,49 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// 진단 시트 — 알림이 실제로 예약/허용됐는지 앱 안에서 확인(M4 검증 도구).
+  /// 기기 설정 메뉴가 기종마다 달라서 여기서 직접 보여준다.
+  Future<void> _showDiagnostics() async {
+    var exact = '확인 불가';
+    var pending = '확인 불가';
+    var nextAlarms = <String>[];
+    try {
+      exact = (await NotificationService.canExact()) ? '✅ 허용 — 정시에 울림' : '⚠️ 미허용 — 몇 분 늦을 수 있음';
+      final list = await NotificationService.pendingList();
+      pending = '${list.length}개';
+      nextAlarms = list.take(5).map((p) => '${p.title ?? ''}  ${p.body ?? ''}'.trim()).toList();
+    } catch (e) {
+      exact = '오류: $e';
+    }
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('알림 진단', style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              Text('데이터 갱신: ${_feed?.generatedAt ?? '-'}'),
+              Text('정확 알람: $exact'),
+              Text('예약된 알람: $pending'),
+              if (nextAlarms.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                const Text('예약 목록(일부):', style: TextStyle(fontWeight: FontWeight.w600)),
+                ...nextAlarms.map((t) => Text('• $t', maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12))),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -96,6 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
         appBar: AppBar(
           title: const Text('열림알림'),
           actions: [
+            IconButton(onPressed: _showDiagnostics, icon: const Icon(Icons.info_outline)),
             IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
             IconButton(
               onPressed: _feed == null ? null : _openFilter,
