@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../logic/matcher.dart';
+import '../logic/notif_planner.dart';
+
+/// 필터 시트 결과 — 구독조건 + 조용시간 설정
+typedef FilterResult = ({Subscription sub, QuietConfig quiet});
 
 /// 구독조건 편집 바텀시트. 저장은 호출측(HomeScreen)이 한다.
 class FilterSheet extends StatefulWidget {
   final Subscription initial;
+  final QuietConfig initialQuiet;
   final List<String> availableAreas; // feed에서 추출한 실제 구 목록
 
-  const FilterSheet({super.key, required this.initial, required this.availableAreas});
+  const FilterSheet(
+      {super.key, required this.initial, this.initialQuiet = const QuietConfig(), required this.availableAreas});
 
   @override
   State<FilterSheet> createState() => _FilterSheetState();
@@ -17,6 +23,7 @@ class _FilterSheetState extends State<FilterSheet> {
   late Set<String> areas = {...widget.initial.areas};
   late bool freeOnly = widget.initial.freeOnly;
   late Set<String> targets = {...widget.initial.targets};
+  late QuietConfig quiet = widget.initialQuiet;
   late final TextEditingController kwCtrl =
       TextEditingController(text: widget.initial.keywords.join(', '));
 
@@ -28,15 +35,25 @@ class _FilterSheetState extends State<FilterSheet> {
     super.dispose();
   }
 
-  Subscription _build() => Subscription(
-        areas: areas,
-        freeOnly: freeOnly,
-        targets: targets,
-        keywords: kwCtrl.text
-            .split(RegExp(r'[,\s]+'))
-            .map((s) => s.trim())
-            .where((s) => s.isNotEmpty)
-            .toList(),
+  FilterResult _build() => (
+        sub: Subscription(
+          areas: areas,
+          freeOnly: freeOnly,
+          targets: targets,
+          keywords: kwCtrl.text
+              .split(RegExp(r'[,\s]+'))
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty)
+              .toList(),
+        ),
+        quiet: quiet,
+      );
+
+  Widget _hourDropdown(int value, ValueChanged<int?> onChanged) => DropdownButton<int>(
+        value: value,
+        isDense: true,
+        items: List.generate(24, (h) => DropdownMenuItem(value: h, child: Text('$h시'))),
+        onChanged: quiet.enabled ? onChanged : null,
       );
 
   @override
@@ -99,6 +116,33 @@ class _FilterSheetState extends State<FilterSheet> {
                           ))
                       .toList(),
                 ),
+                const Divider(height: 32),
+                const Text('알림 시간대', style: TextStyle(fontWeight: FontWeight.w600)),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('조용시간 사용'),
+                  subtitle: const Text('이 시간엔 새 강좌·재오픈 알림을 아침으로 미뤄요', style: TextStyle(fontSize: 12)),
+                  value: quiet.enabled,
+                  onChanged: (v) => setState(() => quiet = quiet.copyWith(enabled: v)),
+                ),
+                Row(
+                  children: [
+                    const SizedBox(width: 8),
+                    _hourDropdown(quiet.startHour, (v) => setState(() => quiet = quiet.copyWith(startHour: v))),
+                    const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('부터')),
+                    _hourDropdown(quiet.endHour, (v) => setState(() => quiet = quiet.copyWith(endHour: v))),
+                    const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('까지')),
+                  ],
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('조용시간에도 ⏰ 접수 알람은 울리기'),
+                  subtitle: const Text('끄면 조용시간에 걸린 접수 알람은 예약하지 않아요', style: TextStyle(fontSize: 12)),
+                  value: quiet.alarmsExempt,
+                  onChanged: quiet.enabled
+                      ? (v) => setState(() => quiet = quiet.copyWith(alarmsExempt: v))
+                      : null,
+                ),
               ],
             ),
           ),
@@ -113,6 +157,7 @@ class _FilterSheetState extends State<FilterSheet> {
                       targets.clear();
                       freeOnly = false;
                       kwCtrl.clear();
+                      quiet = const QuietConfig();
                     }),
                     child: const Text('초기화'),
                   ),

@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _fromCache = false;
   Object? _error;
   Subscription _sub = const Subscription();
+  QuietConfig _quiet = const QuietConfig();
 
   @override
   void initState() {
@@ -45,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _init() async {
     _sub = await _prefsSvc.load();
+    _quiet = await _prefsSvc.loadQuiet();
     await _refresh();
   }
 
@@ -71,16 +73,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openFilter() async {
-    final result = await showModalBottomSheet<Subscription>(
+    final result = await showModalBottomSheet<FilterResult>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => FilterSheet(initial: _sub, availableAreas: _areas),
+      builder: (_) => FilterSheet(initial: _sub, initialQuiet: _quiet, availableAreas: _areas),
     );
     if (result != null) {
-      setState(() => _sub = result);
-      await _prefsSvc.save(result);
-      // 조건이 바뀌면 알람 대상도 바뀐다 → 재계획
+      setState(() {
+        _sub = result.sub;
+        _quiet = result.quiet;
+      });
+      await _prefsSvc.save(result.sub);
+      await _prefsSvc.saveQuiet(result.quiet);
+      // 조건/조용시간이 바뀌면 알람 대상도 바뀐다 → 재계획
       final f = _feed;
       if (f != null) {
         try {

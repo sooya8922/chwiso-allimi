@@ -40,10 +40,52 @@ class PlannedAlarm {
 /// 현재 KST 월클럭(naive) — 기기 TZ가 한국이 아니어도(해외여행 엣지) 데이터(KST)와 일관되게 비교.
 DateTime kstNow() => DateTime.now().toUtc().add(const Duration(hours: 9));
 
-/// 조용시간(KST 22:00~07:59) — 즉시알림(신규/재오픈)은 이 시간대에 발송하지 않고
-/// 다음 주간 확인 때로 미룬다(밤새 발견돼도 손해 없는 배치성 소식이라 — M4 사용자 피드백).
-/// ⏰ 광클 알람은 예외: 자정 오픈을 잡으려고 건 알람은 울리는 게 목적.
-bool inQuietHours(DateTime now) => now.hour >= 22 || now.hour < 8;
+/// 조용시간 설정 — 사용자가 지정(기본 22시~8시). 즉시알림(신규/재오픈)은 이 시간대에
+/// 발송하지 않고 다음 주간 확인 때로 미룬다(배치성 소식이라 늦어도 손해 없음 — M4 피드백).
+/// [alarmsExempt]=true(기본)면 ⏰ 광클 알람은 예외(자정 오픈을 잡으려고 건 알람은 울리는 게 목적),
+/// false면 알람도 조용시간에 걸리는 건 예약하지 않는다.
+class QuietConfig {
+  final bool enabled;
+  final int startHour; // 0~23
+  final int endHour; // 0~23 (start>end면 자정 걸침)
+  final bool alarmsExempt;
+
+  const QuietConfig({this.enabled = true, this.startHour = 22, this.endHour = 8, this.alarmsExempt = true});
+
+  Map<String, dynamic> toJson() =>
+      {'enabled': enabled, 'startHour': startHour, 'endHour': endHour, 'alarmsExempt': alarmsExempt};
+
+  factory QuietConfig.fromJson(Map<String, dynamic> j) => QuietConfig(
+        enabled: (j['enabled'] ?? true) as bool,
+        startHour: ((j['startHour'] ?? 22) as int).clamp(0, 23),
+        endHour: ((j['endHour'] ?? 8) as int).clamp(0, 23),
+        alarmsExempt: (j['alarmsExempt'] ?? true) as bool,
+      );
+
+  QuietConfig copyWith({bool? enabled, int? startHour, int? endHour, bool? alarmsExempt}) => QuietConfig(
+        enabled: enabled ?? this.enabled,
+        startHour: startHour ?? this.startHour,
+        endHour: endHour ?? this.endHour,
+        alarmsExempt: alarmsExempt ?? this.alarmsExempt,
+      );
+}
+
+/// 지금이 조용시간인가. 자정 걸침(22→8)과 안 걸침(13→18) 모두 지원.
+/// 엣지: start==end는 빈 창(조용시간 없음)으로 정의.
+bool inQuietHours(DateTime now, [QuietConfig cfg = const QuietConfig()]) {
+  if (!cfg.enabled || cfg.startHour == cfg.endHour) return false;
+  final h = now.hour;
+  return cfg.startHour < cfg.endHour
+      ? (h >= cfg.startHour && h < cfg.endHour)
+      : (h >= cfg.startHour || h < cfg.endHour);
+}
+
+/// 알람 목록에 조용시간 정책 적용 — alarmsExempt면 그대로, 아니면 조용시간에
+/// 울릴 알람 제거(미루면 접수 시작을 지나버려 의미가 없으므로 제거가 정직하다).
+List<PlannedAlarm> applyQuietToAlarms(List<PlannedAlarm> alarms, QuietConfig cfg) {
+  if (cfg.alarmsExempt) return alarms;
+  return alarms.where((a) => !inQuietHours(a.at, cfg)).toList();
+}
 
 /// 오픈까지 남은 시간 라벨 — 반드시 '지금' 기준으로 계산(feed의 lead_min은 생성시점 기준이라
 /// 그대로 쓰면 "09시 시작인데 3시간 후" 같은 어긋남이 생긴다 — M4 실기기 실측 버그).

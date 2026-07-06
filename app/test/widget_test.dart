@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yeollim_allim/logic/matcher.dart';
+import 'package:yeollim_allim/logic/notif_planner.dart';
 import 'package:yeollim_allim/models/course.dart';
 import 'package:yeollim_allim/screens/home_screen.dart';
 import 'package:yeollim_allim/services/feed_service.dart';
@@ -25,12 +26,19 @@ class FakeFeedService extends FeedService {
 
 class FakePrefsService extends PrefsService {
   Subscription stored = const Subscription();
+  QuietConfig storedQuiet = const QuietConfig();
 
   @override
   Future<Subscription> load() async => stored;
 
   @override
   Future<void> save(Subscription s) async => stored = s;
+
+  @override
+  Future<QuietConfig> loadQuiet() async => storedQuiet;
+
+  @override
+  Future<void> saveQuiet(QuietConfig q) async => storedQuiet = q;
 }
 
 Widget app({bool fail = false}) => MaterialApp(

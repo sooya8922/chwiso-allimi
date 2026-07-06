@@ -38,7 +38,9 @@ const _lastRunKey = 'notify_run_ts_v1';
 /// [now]는 테스트 주입용(기본 = 실제 KST 시각).
 Future<void> refreshAndNotify({Feed? preloaded, DateTime? now}) async {
   final feed = preloaded ?? (await FeedService().load()).feed;
-  final sub = await PrefsService().load();
+  final prefs = PrefsService();
+  final sub = await prefs.load();
+  final quietCfg = await prefs.loadQuiet();
   final nowKst = now ?? kstNow();
 
   final sp = await SharedPreferences.getInstance();
@@ -53,7 +55,7 @@ Future<void> refreshAndNotify({Feed? preloaded, DateTime? now}) async {
   // 이벤트는 '안 본' 상태로 남아 아침 첫 확인 때 알림된다(새벽 05:56 알림 — M4 피드백).
   // 단 첫 실행 기준선(storedRaw==null)은 발송이 없으므로 조용시간에도 저장한다
   // (밤에 설치 → 아침에 지난 7일치 폭탄 나는 엣지 방지).
-  final quiet = inQuietHours(nowKst) && storedRaw != null;
+  final quiet = inQuietHours(nowKst, quietCfg) && storedRaw != null;
   if (!quiet && (nowMs - lastMs).abs() > 60000) {
     await sp.setInt(_lastRunKey, nowMs); // 먼저 마킹해 레이스 창 최소화
     final notified =
@@ -73,7 +75,8 @@ Future<void> refreshAndNotify({Feed? preloaded, DateTime? now}) async {
   }
 
   // 2) 광클 알람 재예약 (now도 KST로 — 기기 TZ 무관, 재예약은 멱등)
-  final alarms = planAlarms(feed, sub, nowKst);
+  // 조용시간 정책: alarmsExempt(기본)면 알람은 그대로, 아니면 조용시간 발화분 제거
+  final alarms = applyQuietToAlarms(planAlarms(feed, sub, nowKst), quietCfg);
   await NotificationService.rescheduleAlarms(alarms);
 }
 

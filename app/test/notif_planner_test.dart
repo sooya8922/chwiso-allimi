@@ -249,13 +249,59 @@ void main() {
   });
 
   group('inQuietHours 경계', () {
-    test('22:00~07:59 조용, 08:00~21:59 활성', () {
+    test('기본(22~8): 경계값', () {
       expect(inQuietHours(DateTime(2026, 7, 6, 21, 59)), false);
       expect(inQuietHours(DateTime(2026, 7, 6, 22, 0)), true);
-      expect(inQuietHours(DateTime(2026, 7, 7, 5, 56)), true, reason: '오늘 새벽 실측 케이스');
+      expect(inQuietHours(DateTime(2026, 7, 7, 5, 56)), true, reason: '새벽 실측 케이스');
       expect(inQuietHours(DateTime(2026, 7, 7, 7, 59)), true);
       expect(inQuietHours(DateTime(2026, 7, 7, 8, 0)), false);
       expect(inQuietHours(DateTime(2026, 7, 7, 0, 0)), true, reason: '자정');
+    });
+    test('엣지: 자정 안 걸치는 창(13~18)', () {
+      const c = QuietConfig(startHour: 13, endHour: 18);
+      expect(inQuietHours(DateTime(2026, 7, 6, 12, 59), c), false);
+      expect(inQuietHours(DateTime(2026, 7, 6, 13, 0), c), true);
+      expect(inQuietHours(DateTime(2026, 7, 6, 17, 59), c), true);
+      expect(inQuietHours(DateTime(2026, 7, 6, 18, 0), c), false);
+      expect(inQuietHours(DateTime(2026, 7, 6, 23, 0), c), false);
+    });
+    test('엣지: enabled=false → 항상 활성', () {
+      const c = QuietConfig(enabled: false);
+      expect(inQuietHours(DateTime(2026, 7, 7, 3, 0), c), false);
+    });
+    test('엣지: start==end → 빈 창(조용시간 없음)', () {
+      const c = QuietConfig(startHour: 9, endHour: 9);
+      expect(inQuietHours(DateTime(2026, 7, 7, 9, 0), c), false);
+      expect(inQuietHours(DateTime(2026, 7, 7, 3, 0), c), false);
+    });
+    test('QuietConfig 직렬화 왕복 + 파손 방어', () {
+      const c = QuietConfig(enabled: false, startHour: 23, endHour: 6, alarmsExempt: false);
+      final r = QuietConfig.fromJson(c.toJson());
+      expect((r.enabled, r.startHour, r.endHour, r.alarmsExempt), (false, 23, 6, false));
+      final broken = QuietConfig.fromJson(const {'startHour': 99});
+      expect(broken.startHour, 23, reason: '범위 밖 값은 clamp');
+      expect(broken.enabled, true, reason: '누락 필드는 기본값');
+    });
+  });
+
+  group('applyQuietToAlarms', () {
+    PlannedAlarm mkAlarm(String id, DateTime at) =>
+        PlannedAlarm(id: 1, svcid: id, at: at, title: 't', body: 'b', url: '');
+    final alarms = [
+      mkAlarm('A', DateTime(2026, 7, 7, 9, 50)),   // 주간
+      mkAlarm('B', DateTime(2026, 7, 6, 23, 50)),  // 조용시간(자정 오픈용)
+    ];
+    test('alarmsExempt=true(기본): 전부 유지', () {
+      expect(applyQuietToAlarms(alarms, const QuietConfig()).length, 2);
+    });
+    test('alarmsExempt=false: 조용시간 발화분 제거', () {
+      final out = applyQuietToAlarms(alarms, const QuietConfig(alarmsExempt: false));
+      expect(out.length, 1);
+      expect(out[0].svcid, 'A');
+    });
+    test('엣지: 조용시간 자체가 꺼져 있으면 alarmsExempt=false여도 전부 유지', () {
+      final out = applyQuietToAlarms(alarms, const QuietConfig(enabled: false, alarmsExempt: false));
+      expect(out.length, 2);
     });
   });
 
