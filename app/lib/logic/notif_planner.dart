@@ -40,6 +40,11 @@ class PlannedAlarm {
 /// 현재 KST 월클럭(naive) — 기기 TZ가 한국이 아니어도(해외여행 엣지) 데이터(KST)와 일관되게 비교.
 DateTime kstNow() => DateTime.now().toUtc().add(const Duration(hours: 9));
 
+/// 조용시간(KST 22:00~07:59) — 즉시알림(신규/재오픈)은 이 시간대에 발송하지 않고
+/// 다음 주간 확인 때로 미룬다(밤새 발견돼도 손해 없는 배치성 소식이라 — M4 사용자 피드백).
+/// ⏰ 광클 알람은 예외: 자정 오픈을 잡으려고 건 알람은 울리는 게 목적.
+bool inQuietHours(DateTime now) => now.hour >= 22 || now.hour < 8;
+
 /// 오픈까지 남은 시간 라벨 — 반드시 '지금' 기준으로 계산(feed의 lead_min은 생성시점 기준이라
 /// 그대로 쓰면 "09시 시작인데 3시간 후" 같은 어긋남이 생긴다 — M4 실기기 실측 버그).
 String leadLabel(DateTime? openAt, DateTime now) {

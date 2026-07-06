@@ -35,9 +35,11 @@ void callbackDispatcher() {
 const _lastRunKey = 'notify_run_ts_v1';
 
 /// 공용 갱신 루틴 — 포그라운드(앱 열림)와 백그라운드 양쪽에서 호출.
-Future<void> refreshAndNotify({Feed? preloaded}) async {
+/// [now]는 테스트 주입용(기본 = 실제 KST 시각).
+Future<void> refreshAndNotify({Feed? preloaded, DateTime? now}) async {
   final feed = preloaded ?? (await FeedService().load()).feed;
   final sub = await PrefsService().load();
+  final nowKst = now ?? kstNow();
 
   final sp = await SharedPreferences.getInstance();
 
@@ -46,9 +48,14 @@ Future<void> refreshAndNotify({Feed? preloaded}) async {
   // 같은 알림이 두 번 나간다 → 60초 내 재실행이면 즉시알림 파트는 스킵(알람 재예약은 멱등이라 진행).
   final nowMs = DateTime.now().millisecondsSinceEpoch;
   final lastMs = sp.getInt(_lastRunKey) ?? 0;
-  if ((nowMs - lastMs).abs() > 60000) {
+  final storedRaw = sp.getString(_notifiedKey);
+  // 조용시간(22~08시 KST)에는 즉시알림을 발송도 저장도 하지 않는다 → 밤새 생긴
+  // 이벤트는 '안 본' 상태로 남아 아침 첫 확인 때 알림된다(새벽 05:56 알림 — M4 피드백).
+  // 단 첫 실행 기준선(storedRaw==null)은 발송이 없으므로 조용시간에도 저장한다
+  // (밤에 설치 → 아침에 지난 7일치 폭탄 나는 엣지 방지).
+  final quiet = inQuietHours(nowKst) && storedRaw != null;
+  if (!quiet && (nowMs - lastMs).abs() > 60000) {
     await sp.setInt(_lastRunKey, nowMs); // 먼저 마킹해 레이스 창 최소화
-    final storedRaw = sp.getString(_notifiedKey);
     final notified =
         ((json.decode(storedRaw ?? '[]') as List).map((e) => e.toString())).toSet();
     final plan = planInstantNotifications(feed, sub, notified);
@@ -66,7 +73,7 @@ Future<void> refreshAndNotify({Feed? preloaded}) async {
   }
 
   // 2) 광클 알람 재예약 (now도 KST로 — 기기 TZ 무관, 재예약은 멱등)
-  final alarms = planAlarms(feed, sub, kstNow());
+  final alarms = planAlarms(feed, sub, nowKst);
   await NotificationService.rescheduleAlarms(alarms);
 }
 

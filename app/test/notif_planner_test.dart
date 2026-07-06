@@ -248,6 +248,17 @@ void main() {
     });
   });
 
+  group('inQuietHours 경계', () {
+    test('22:00~07:59 조용, 08:00~21:59 활성', () {
+      expect(inQuietHours(DateTime(2026, 7, 6, 21, 59)), false);
+      expect(inQuietHours(DateTime(2026, 7, 6, 22, 0)), true);
+      expect(inQuietHours(DateTime(2026, 7, 7, 5, 56)), true, reason: '오늘 새벽 실측 케이스');
+      expect(inQuietHours(DateTime(2026, 7, 7, 7, 59)), true);
+      expect(inQuietHours(DateTime(2026, 7, 7, 8, 0)), false);
+      expect(inQuietHours(DateTime(2026, 7, 7, 0, 0)), true, reason: '자정');
+    });
+  });
+
   group('직렬화 왕복(백그라운드 저장 경로)', () {
     test('notified 셋 JSON 왕복', () {
       final s = {'new_S1', 'reopen_S2_2026-07-03 20:20'};
