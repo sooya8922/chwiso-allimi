@@ -40,6 +40,17 @@ class PlannedAlarm {
 /// 현재 KST 월클럭(naive) — 기기 TZ가 한국이 아니어도(해외여행 엣지) 데이터(KST)와 일관되게 비교.
 DateTime kstNow() => DateTime.now().toUtc().add(const Duration(hours: 9));
 
+/// 오픈까지 남은 시간 라벨 — 반드시 '지금' 기준으로 계산(feed의 lead_min은 생성시점 기준이라
+/// 그대로 쓰면 "09시 시작인데 3시간 후" 같은 어긋남이 생긴다 — M4 실기기 실측 버그).
+String leadLabel(DateTime? openAt, DateTime now) {
+  if (openAt == null) return '';
+  final min = openAt.difference(now).inMinutes;
+  if (min <= 0) return '오픈!';
+  if (min < 60) return '$min분 후';
+  if (min < 1440) return '${(min / 60).round()}시간 후';
+  return '${(min / 1440).round()}일 후';
+}
+
 /// svcid → 안정적 32비트 양수 id (dart String.hashCode는 실행마다 달라질 수 있어 직접 FNV-1a)
 int stableId(String svcid) {
   var h = 0x811c9dc5;
@@ -136,11 +147,13 @@ List<PlannedAlarm> planAlarms(Feed feed, Subscription sub, DateTime now) {
 
     final hh = openAt.hour.toString().padLeft(2, '0');
     final mm = openAt.minute.toString().padLeft(2, '0');
+    // 날짜는 절대 표기(M/D) — '오늘/내일' 같은 상대 표현은 예약 시점과 발화 시점이
+    // 달라서(며칠 전 예약 → 당일 발화) 울리는 순간에 거짓말이 된다(엣지).
     out.add(PlannedAlarm(
       id: stableId(u.id),
       svcid: u.id,
       at: fireAt,
-      title: '⏰ $hh:$mm 접수 시작!',
+      title: '⏰ ${openAt.month}/${openAt.day} $hh:$mm 접수 시작!',
       body: '[${u.area.isEmpty ? '서울전역' : u.area}] ${u.name}',
       url: c?.url ?? '',
     ));

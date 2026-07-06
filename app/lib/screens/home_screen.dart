@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../logic/matcher.dart';
+import '../logic/notif_planner.dart';
 import '../models/course.dart';
 import '../services/feed_service.dart';
 import '../services/notification_service.dart';
@@ -94,12 +95,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _showDiagnostics() async {
     var exact = '확인 불가';
     var pending = '확인 불가';
+    var canExactNow = false;
     var nextAlarms = <String>[];
     try {
-      exact = (await NotificationService.canExact()) ? '✅ 허용 — 정시에 울림' : '⚠️ 미허용 — 몇 분 늦을 수 있음';
+      canExactNow = await NotificationService.canExact();
+      exact = canExactNow ? '✅ 허용 — 정시에 울림' : '⚠️ 미허용 — 몇 분 늦을 수 있음';
       final list = await NotificationService.pendingList();
       pending = '${list.length}개';
-      nextAlarms = list.take(5).map((p) => '${p.title ?? ''}  ${p.body ?? ''}'.trim()).toList();
+      nextAlarms = list.take(8).map((p) => '${p.title ?? ''}  ${p.body ?? ''}'.trim()).toList();
     } catch (e) {
       exact = '오류: $e';
     }
@@ -108,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -116,7 +119,8 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Text('알림 진단', style: Theme.of(ctx).textTheme.titleLarge),
               const SizedBox(height: 12),
-              Text('데이터 갱신: ${_feed?.generatedAt ?? '-'}'),
+              Text('기기 시각(KST): ${kstNow().toString().substring(0, 16)}'),
+              Text('데이터 갱신: ${_feed?.generatedAt ?? '-'}  (하루 4회)'),
               Text('정확 알람: $exact'),
               Text('예약된 알람: $pending'),
               if (nextAlarms.isNotEmpty) ...[
@@ -125,6 +129,65 @@ class _HomeScreenState extends State<HomeScreen> {
                 ...nextAlarms.map((t) => Text('• $t', maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12))),
               ],
+              const SizedBox(height: 16),
+              // 알람 전달 자체를 즉시 검증하는 도구 (M4: 예약됐는데 안 울리는 문제 진단)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.notifications_active),
+                  label: const Text('1분 후 테스트 알람 울리기'),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    try {
+                      await NotificationService.scheduleTestAlarm();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('1분 뒤 테스트 알람이 옵니다 — 화면을 꺼두세요')));
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(SnackBar(content: Text('예약 실패: $e')));
+                      }
+                    }
+                  },
+                ),
+              ),
+              if (!canExactNow)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.alarm_on),
+                    label: const Text('정확 알람 허용하기 (설정 열림)'),
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await NotificationService.requestExact();
+                      final f = _feed;
+                      if (f != null) {
+                        try {
+                          await widget.onFeedLoaded?.call(f); // 새 모드로 재예약
+                        } catch (_) {}
+                      }
+                    },
+                  ),
+                ),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.restart_alt),
+                  label: const Text('알람 다시 예약하기'),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    final f = _feed;
+                    if (f != null) {
+                      try {
+                        await widget.onFeedLoaded?.call(f);
+                      } catch (_) {}
+                    }
+                    if (mounted) _showDiagnostics();
+                  },
+                ),
+              ),
             ],
           ),
         ),
@@ -240,7 +303,7 @@ class _HomeScreenState extends State<HomeScreen> {
           leading: const Icon(Icons.alarm),
           title: Text(u.name, maxLines: 2, overflow: TextOverflow.ellipsis),
           subtitle: Text('${u.area.isEmpty ? '서울전역' : u.area} · ${u.openAt} 접수 시작'),
-          trailing: Text(_leadLabel(u.leadMin), style: const TextStyle(fontWeight: FontWeight.w600)),
+          trailing: Text(leadLabel(u.openAtDt, kstNow()), style: const TextStyle(fontWeight: FontWeight.w600)),
           onTap: c == null
               ? null
               : () => showModalBottomSheet(
@@ -300,10 +363,4 @@ class _HomeScreenState extends State<HomeScreen> {
           child: CourseCard(course: c),
         ),
       );
-
-  static String _leadLabel(int min) {
-    if (min < 60) return '$min분 후';
-    if (min < 1440) return '${(min / 60).round()}시간 후';
-    return '${(min / 1440).round()}일 후';
-  }
 }

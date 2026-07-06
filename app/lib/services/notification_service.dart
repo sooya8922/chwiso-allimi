@@ -110,4 +110,31 @@ class NotificationService {
     await init();
     return _plugin.pendingNotificationRequests();
   }
+
+  /// 정확알람 권한 요청 — 시스템의 '알람 및 리마인더' 설정(우리 앱 페이지)을 직접 연다.
+  static Future<bool> requestExact() async {
+    await init();
+    final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return false;
+    await android.requestExactAlarmsPermission();
+    return await android.canScheduleExactNotifications() ?? false;
+  }
+
+  /// 진단용: 1분 후 테스트 알람 — 알람 '전달' 자체가 되는지 즉시 검증(M4).
+  /// 실제 알람과 동일한 채널/모드를 쓰므로 이게 울리면 전달 경로는 정상.
+  static Future<void> scheduleTestAlarm() async {
+    await init();
+    final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final exactOk = await android?.canScheduleExactNotifications() ?? false;
+    final at = tz.TZDateTime.now(tz.local).add(const Duration(minutes: 1));
+    await _plugin.zonedSchedule(
+      id: 999999901,
+      title: '🔔 테스트 알람',
+      body: '이게 보이면 알람 전달 정상 (${at.hour}:${at.minute.toString().padLeft(2, '0')} 예약분)',
+      scheduledDate: at,
+      notificationDetails: const NotificationDetails(android: _alarmChannel),
+      androidScheduleMode:
+          exactOk ? AndroidScheduleMode.exactAllowWhileIdle : AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+  }
 }

@@ -204,6 +204,50 @@ void main() {
     });
   });
 
+  group('leadLabel — 기기 시각 기준(M4 "3시간 후" 표시 버그 고정)', () {
+    final now = DateTime(2026, 7, 6, 8, 58); // 사용자가 본 그 시각
+    test('실측 케이스: 09:00 오픈을 08:58에 보면 2분 후 (3시간 후 아님!)', () {
+      expect(leadLabel(DateTime(2026, 7, 6, 9, 0), now), '2분 후');
+    });
+    test('엣지: 이미 지난 오픈 → 오픈!', () {
+      expect(leadLabel(DateTime(2026, 7, 6, 8, 0), now), '오픈!');
+      expect(leadLabel(DateTime(2026, 7, 6, 8, 58), now), '오픈!', reason: '정확히 지금도 오픈');
+    });
+    test('엣지: 시간/일 단위 라벨', () {
+      expect(leadLabel(DateTime(2026, 7, 6, 10, 0), now), '1시간 후');
+      expect(leadLabel(DateTime(2026, 7, 8, 9, 0), now), '2일 후');
+    });
+    test('엣지: null(파싱 불가) → 빈 문자열', () {
+      expect(leadLabel(null, now), '');
+    });
+  });
+
+  group('알람 제목 날짜 라벨', () {
+    Map<String, dynamic> up2(String id, String openAt) =>
+        {'id': id, 'name': 'u', 'area': '마포구', 'open_at': openAt, 'lead_min': 999};
+    test('절대 날짜(M/D) 표기 — 상대 표현은 발화 시점에 거짓말이 되는 엣지', () {
+      final f = feedFrom({
+        'courses': [course('S1'), course('S2'), course('S3')],
+        'upcoming': [up2('S1', '2026-07-04 14:00'), up2('S2', '2026-07-05 10:00'),
+                     up2('S3', '2026-07-20 10:00')],
+      });
+      final out = planAlarms(f, const Subscription(), now);
+      expect(out[0].title, contains('7/4 14:00'));
+      expect(out[1].title, contains('7/5 10:00'));
+      expect(out[2].title, contains('7/20 10:00'));
+    });
+    test('엣지: 자정 오픈 — 전날 23:50에 울려도 날짜가 명확', () {
+      final f = feedFrom({
+        'courses': [course('S1')],
+        'upcoming': [up2('S1', '2026-07-05 00:00')],
+      });
+      final out = planAlarms(f, const Subscription(), DateTime(2026, 7, 4, 20, 0));
+      expect(out.length, 1);
+      expect(out[0].title, contains('7/5 00:00'));
+      expect(out[0].at, DateTime(2026, 7, 4, 23, 50));
+    });
+  });
+
   group('직렬화 왕복(백그라운드 저장 경로)', () {
     test('notified 셋 JSON 왕복', () {
       final s = {'new_S1', 'reopen_S2_2026-07-03 20:20'};
