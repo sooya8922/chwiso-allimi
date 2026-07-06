@@ -305,6 +305,35 @@ void main() {
     });
   });
 
+  group('kstNow 불변식(7/7 알람 대참사 회귀 방지)', () {
+    test('naive(isUtc=false)여야 함 — UTC 깃발이 남으면 모든 비교가 9시간 틀어짐', () {
+      expect(kstNow().isUtc, false);
+    });
+    test('실전 재현: kstNow()로 planAlarms 돌려도 조기발화/삭제 없음', () {
+      final now = kstNow();
+      // 4시간 뒤 오픈(대참사 당시 '9시간 이내 → 삭제'되던 케이스)
+      final in4h = now.add(const Duration(hours: 4));
+      // 9시간 5분 뒤 오픈(대참사 당시 '즉시 발화'되던 케이스)
+      final in9h = now.add(const Duration(hours: 9, minutes: 5));
+      String fmt(DateTime d) =>
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+          '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+      final f = feedFrom({
+        'courses': [course('S1'), course('S2')],
+        'upcoming': [
+          {'id': 'S1', 'name': 'u', 'area': '마포구', 'open_at': fmt(in4h), 'lead_min': 1},
+          {'id': 'S2', 'name': 'u', 'area': '마포구', 'open_at': fmt(in9h), 'lead_min': 1},
+        ],
+      });
+      final out = planAlarms(f, const Subscription(), kstNow());
+      expect(out.length, 2, reason: '9시간 이내 오픈이 삭제되면 안 됨');
+      for (final a in out) {
+        expect(a.at.difference(kstNow()).inMinutes, greaterThan(60),
+            reason: '${a.svcid}: 조기발화(now+15s 보정 오작동) 금지 — 실제 오픈 10분 전이어야');
+      }
+    });
+  });
+
   group('직렬화 왕복(백그라운드 저장 경로)', () {
     test('notified 셋 JSON 왕복', () {
       final s = {'new_S1', 'reopen_S2_2026-07-03 20:20'};

@@ -38,7 +38,15 @@ class PlannedAlarm {
 }
 
 /// 현재 KST 월클럭(naive) — 기기 TZ가 한국이 아니어도(해외여행 엣지) 데이터(KST)와 일관되게 비교.
-DateTime kstNow() => DateTime.now().toUtc().add(const Duration(hours: 9));
+///
+/// 반드시 isUtc=false(naive)로 반환해야 한다. toUtc().add(9h)를 그대로 반환하면
+/// isUtc=true 깃발이 남아 naive로 파싱된 feed 시각과의 비교(epoch 기반)가 9시간 틀어진다
+/// — 오픈 9시간 이내 알람이 전부 삭제되고 9시간 경계의 알람이 즉시 발화하던
+/// M4 실기기 대참사(7/6 08:50 미발화, 7/7 05:59 조기발화)의 근본 원인.
+DateTime kstNow() {
+  final u = DateTime.now().toUtc().add(const Duration(hours: 9));
+  return DateTime(u.year, u.month, u.day, u.hour, u.minute, u.second);
+}
 
 /// 조용시간 설정 — 사용자가 지정(기본 22시~8시). 즉시알림(신규/재오픈)은 이 시간대에
 /// 발송하지 않고 다음 주간 확인 때로 미룬다(배치성 소식이라 늦어도 손해 없음 — M4 피드백).
