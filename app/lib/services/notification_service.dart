@@ -39,10 +39,13 @@ class NotificationService {
     _inited = true;
   }
 
+  static const _testAlarmId = 999999901; // 진단용 테스트 알람 id (재예약 취소에서 제외)
+
   static void _onTap(NotificationResponse resp) {
     final url = resp.payload;
     if (url != null && url.startsWith('http')) {
-      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final uri = Uri.tryParse(url); // 파손 URL이어도 탭 핸들러가 죽지 않게
+      if (uri != null) launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -70,8 +73,10 @@ class NotificationService {
   /// 정확알람 권한이 없으면 inexact로 폴백(늦을 수 있지만 안 울리는 것보단 낫다).
   static Future<void> rescheduleAlarms(List<PlannedAlarm> alarms) async {
     await init();
-    // 예약(pending)만 개별 취소 — 이미 표시된 알림은 건드리지 않는다
+    // 예약(pending)만 개별 취소 — 이미 표시된 알림은 건드리지 않는다.
+    // 진단용 테스트 알람은 제외(재예약이 M4 검증 중인 테스트 알람을 지우면 안 됨).
     for (final p in await _plugin.pendingNotificationRequests()) {
+      if (p.id == _testAlarmId) continue;
       await _plugin.cancel(id: p.id);
     }
     final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
@@ -128,7 +133,7 @@ class NotificationService {
     final exactOk = await android?.canScheduleExactNotifications() ?? false;
     final at = tz.TZDateTime.now(tz.local).add(const Duration(minutes: 1));
     await _plugin.zonedSchedule(
-      id: 999999901,
+      id: _testAlarmId,
       title: '🔔 테스트 알람',
       body: '이게 보이면 알람 전달 정상 (${at.hour}:${at.minute.toString().padLeft(2, '0')} 예약분)',
       scheduledDate: at,

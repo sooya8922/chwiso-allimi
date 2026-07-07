@@ -88,6 +88,19 @@ void main() {
       final f = feedFrom({'courses': [course('S1', status: '예약마감')], 'reopened': [reopen('S1')]});
       expect(planInstantNotifications(f, const Subscription(), {}).toShow, isEmpty);
     });
+
+    test('엣지: 안내중+접수기간내 강좌의 재오픈은 알림돼야(effectivelyOpen — UI/알림 일치)', () {
+      // status=안내중이지만 접수기간 시작됨 → UI는 접수중 탭에 노출 → 재오픈 알림도 나가야 함
+      final f = Feed.fromJson({
+        'version': 1, 'generated_at': 'x', 'courses': [
+          {'id': 'S1', 'status': '안내중', 'rcpt_bgn': '2026-07-06 10:00', 'rcpt_end': '2026-07-20 18:00',
+           'name': 'n', 'area': '마포구', 'url': 'https://yeyak.seoul.go.kr/x'}
+        ],
+        'reopened': [{'id': 'S1', 'name': 'n', 'area': '마포구', 'in_window': 1, 'at': '2026-07-06 12:00'}],
+      });
+      final out = planInstantNotifications(f, const Subscription(), {}, now: DateTime(2026, 7, 6, 12, 0)).toShow;
+      expect(out.length, 1, reason: 'isOpen(엄격)이면 놓쳤을 케이스 — effectivelyOpen으로 잡아야');
+    });
   });
 
   group('광클 알람', () {
@@ -151,6 +164,11 @@ void main() {
       final ids = List.generate(2000, (i) => stableId('S26061912345$i')).toSet();
       expect(ids.length, greaterThan(1990), reason: '2000개 중 충돌 10개 미만');
       expect(ids.every((i) => i > 0), true);
+    });
+    test('엣지: 빈 문자열도 31비트 범위(음수화 방지)', () {
+      final id = stableId('');
+      expect(id, greaterThanOrEqualTo(0));
+      expect(id, lessThanOrEqualTo(0x7fffffff));
     });
   });
 

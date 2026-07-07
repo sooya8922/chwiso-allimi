@@ -58,9 +58,16 @@ Future<void> refreshAndNotify({Feed? preloaded, DateTime? now}) async {
   final quiet = inQuietHours(nowKst, quietCfg) && storedRaw != null;
   if (!quiet && (nowMs - lastMs).abs() > 60000) {
     await sp.setInt(_lastRunKey, nowMs); // 먼저 마킹해 레이스 창 최소화
-    final notified =
-        ((json.decode(storedRaw ?? '[]') as List).map((e) => e.toString())).toSet();
-    final plan = planInstantNotifications(feed, sub, notified);
+    // 저장소 손상(쓰기 중 크래시 등) 시 json.decode가 던지면 이후 모든 알림이 영구 실패한다
+    // → try/catch로 빈 셋 폴백 + 손상 키 제거(self-heal). 최악은 알림 1회 중복, 영구 실패 아님.
+    Set<String> notified;
+    try {
+      notified = (json.decode(storedRaw ?? '[]') as List).map((e) => e.toString()).toSet();
+    } catch (_) {
+      notified = {};
+      await sp.remove(_notifiedKey);
+    }
+    final plan = planInstantNotifications(feed, sub, notified, now: nowKst);
     if (storedRaw != null) {
       // 평상시: 새 이벤트만 발송 (폭주 시 요약 1건으로 묶음)
       for (final n in summarizeBurst(plan.toShow)) {

@@ -71,6 +71,12 @@ void main() {
     test('reopened.in_window int→bool 변환', () {
       expect(feed.reopened[0].inWindow, true);
     });
+    test('엣지: in_window가 bool(true/false)로 와도 처리(파이프라인 변경 방어)', () {
+      expect(ReopenEvent.fromJson(const {'id': 'S', 'in_window': true}).inWindow, true);
+      expect(ReopenEvent.fromJson(const {'id': 'S', 'in_window': false}).inWindow, false);
+      expect(ReopenEvent.fromJson(const {'id': 'S', 'in_window': 1}).inWindow, true);
+      expect(ReopenEvent.fromJson(const {'id': 'S', 'in_window': 0}).inWindow, false);
+    });
 
     test('upcoming 파싱 + 시각', () {
       final u = feed.upcoming[0];

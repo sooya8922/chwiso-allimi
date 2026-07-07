@@ -85,4 +85,21 @@ void main() {
     expect(sp.getString('notified_keys_v1'), isNotNull,
         reason: '밤에 설치해도 기준선은 잡혀야 아침 폭탄이 없다');
   });
+
+  test('엣지: 손상된 notified 저장값 → 크래시 없이 self-heal(영구 알림 실패 방지, MAJOR-2)', () async {
+    SharedPreferences.setMockInitialValues({
+      'notified_keys_v1': '{깨진 JSON!!', // 쓰기 중 크래시 등으로 손상됨
+    });
+    // 핵심: json.decode가 손상값에서 던지지 않고 빈 셋으로 폴백 + 손상 키 제거(self-heal).
+    // (실기기에선 이후 기준선 재저장까지 이어지지만, 테스트 환경은 알림 플러그인 부재로
+    //  showInstant에서 멈춤 — 그래도 '손상값이 남아 영구 실패'하는 일은 없어야 한다)
+    try {
+      await refreshAndNotify(preloaded: feedWithReopens(), now: day);
+    } catch (_) {/* 알람/알림 플러그인 부재 */}
+    final sp = await SharedPreferences.getInstance();
+    final raw = sp.getString('notified_keys_v1');
+    // 손상 문자열이 그대로 남아있으면 다음 실행도 계속 터진다 → 반드시 제거(또는 유효 JSON)돼야
+    expect(raw, isNot('{깨진 JSON!!'), reason: '손상값이 그대로 남으면 영구 알림 실패');
+    if (raw != null) expect(() => json.decode(raw), returnsNormally);
+  });
 }

@@ -3,6 +3,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/course.dart';
 
+/// geo: URI 문자열 생성(순수 함수, 테스트 대상). 라벨의 괄호는 geo 구분자와 충돌하므로
+/// Uri.encodeComponent(괄호 미인코딩) 후 () 를 수동 인코딩한다.
+String buildGeoUri(double lng, double lat, String name) {
+  final label = Uri.encodeComponent(name).replaceAll('(', '%28').replaceAll(')', '%29');
+  return 'geo:$lat,$lng?q=$lat,$lng($label)';
+}
+
 /// 강좌 카드 — 리스트의 기본 단위.
 class CourseCard extends StatelessWidget {
   final Course course;
@@ -134,15 +141,15 @@ class CourseCard extends StatelessWidget {
 
   /// 좌표를 지도 앱으로 연다. geo: URI(설치된 지도앱 선택) → 실패 시 지도 웹으로 폴백.
   Future<void> _openMap(Course c) async {
-    final lat = c.y, lng = c.x; // yeyak: X=경도, Y=위도
-    final label = Uri.encodeComponent(c.name);
-    final geo = Uri.parse('geo:$lat,$lng?q=$lat,$lng($label)');
+    final lat = c.y!, lng = c.x!; // yeyak: X=경도, Y=위도 (hasLocation 가드로 non-null 보장)
+    final geo = Uri.parse(buildGeoUri(lng, lat, c.name));
     if (await canLaunchUrl(geo)) {
       await launchUrl(geo, mode: LaunchMode.externalApplication);
       return;
     }
-    // 폴백: 지도 웹(브라우저) — geo 핸들러가 없는 기기 대비
-    final web = Uri.parse('https://map.kakao.com/link/map/$label,$lat,$lng');
+    // 폴백: 지도 웹(브라우저) — geo 핸들러가 없는 기기 대비. 이름은 경로 세그먼트로 인코딩.
+    final web = Uri.parse(
+        'https://map.kakao.com/link/map/${Uri.encodeComponent(c.name)},$lat,$lng');
     await launchUrl(web, mode: LaunchMode.externalApplication);
   }
 }

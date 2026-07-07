@@ -168,7 +168,9 @@ class ReopenEvent {
         id: (j['id'] ?? '') as String,
         name: (j['name'] ?? '') as String,
         area: (j['area'] ?? '') as String,
-        inWindow: (j['in_window'] ?? 0) == 1,
+        // 파이프라인은 int(1/0)로 보내지만, 혹시 bool(true/false)로 바뀌어도 견디게 방어
+        // (Dart에선 true==1이 false라, 안 그러면 전 재오픈 알림이 조용히 죽음)
+        inWindow: (j['in_window'] == 1 || j['in_window'] == true),
         at: (j['at'] ?? '') as String,
       );
 }

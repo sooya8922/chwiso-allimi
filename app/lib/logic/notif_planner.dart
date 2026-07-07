@@ -134,7 +134,7 @@ int stableId(String svcid) {
     h ^= c;
     h = (h * 0x01000193) & 0x7fffffff;
   }
-  return h;
+  return h & 0x7fffffff; // 빈 문자열이면 루프 미실행 → 시드가 31비트 초과(음수화) → 반환 시 마스킹
 }
 
 /// 즉시 알림 계획 결과.
@@ -155,7 +155,8 @@ class InstantPlan {
 ///  a. 강좌당 최신 재오픈 이벤트 1건만 (같은 강좌가 7일 윈도우에 2~3회 재오픈하는 게 실측 32/121)
 ///  b. 쿨다운: 이 강좌의 다른 재오픈 이벤트를 이미 알렸으면(그 이벤트가 아직 feed에 있는 동안) 억제
 ///  c. 첫 실행은 호출측이 allKeys만 저장하고 발송 안 함(설치 직후 지난 7일치 폭탄 방지)
-InstantPlan planInstantNotifications(Feed feed, Subscription sub, Set<String> notified) {
+InstantPlan planInstantNotifications(Feed feed, Subscription sub, Set<String> notified, {DateTime? now}) {
+  final nowKst = now ?? kstNow();
   final byId = {for (final c in feed.courses) c.id: c};
   final out = <PlannedNotification>[];
   final allKeys = <String>{
@@ -192,8 +193,9 @@ InstantPlan planInstantNotifications(Feed feed, Subscription sub, Set<String> no
     final c = byId[r.id];
     if (c != null && !matches(c, sub)) continue;
     if (c == null && !sub.isEmpty) continue;
-    // 지금도 접수중인 것만 (재오픈 후 이미 다시 마감됐으면 헛알림)
-    if (c != null && !c.isOpen) continue;
+    // 지금 실질적으로 열려있는 것만 (재오픈 후 다시 마감=헛알림). '안내중+접수기간내'도 열린 것으로
+    // 취급해야 UI(접수중 탭)와 알림이 어긋나지 않음 — isOpen(엄격) 대신 effectivelyOpen.
+    if (c != null && !c.effectivelyOpen(nowKst)) continue;
     out.add(PlannedNotification(
       key: key,
       title: '🔓 마감됐던 강좌가 다시 열렸어요',
