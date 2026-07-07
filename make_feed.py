@@ -96,7 +96,7 @@ def main():
     cutoff = (now - timedelta(days=REOPEN_WINDOW_D)).strftime("%Y-%m-%d %H:%M:%S")
     for r in conn.execute("""SELECT svcid,svcnm,area,in_window,observed_at,svcurl FROM transition_log
                              WHERE observed_at >= ? ORDER BY id DESC""", (cutoff,)):
-        reopened.append({"id": r["svcid"], "name": clean(r["svcnm"]), "area": clean(r["area"]),
+        reopened.append({"id": r["svcid"], "source": SOURCE, "name": clean(r["svcnm"]), "area": clean(r["area"]),
                          "in_window": r["in_window"], "at": r["observed_at"][:16]})
 
     feed = {

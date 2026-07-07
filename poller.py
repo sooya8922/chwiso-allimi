@@ -45,7 +45,8 @@ def now_kst():
     return datetime.now(KST).replace(tzinfo=None)
 
 # ── 설정 ────────────────────────────────────────────────────────────────
-API_KEY = os.environ.get("SEOUL_API_KEY", "sample")  # sample = 5건 제한(테스트용)
+# or "sample": 시크릿 미설정 시 GH Actions는 빈 문자열("")을 넘김 → None/빈값 모두 sample로 폴백
+API_KEY = os.environ.get("SEOUL_API_KEY") or "sample"  # sample = 5건 제한(테스트용)
 DB_PATH = os.environ.get("CHWISO_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chwiso.db"))
 PAGE = 1000  # 서울 API 1회 최대 1000행 (sample키는 5행만 반환)
 
@@ -119,19 +120,28 @@ def fetch(service):
     return rows
 
 
+def _parse_dt(s):
+    """yeyak 일시 파싱 — 소수초 유무 둘 다 지원. 불량이면 None."""
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+
 def in_window(rcptbgn, rcptend, now):
-    """현재가 접수기간 안인가."""
-    try:
-        fmt = "%Y-%m-%d %H:%M:%S.%f"
-        b = datetime.strptime(rcptbgn, fmt) if rcptbgn else None
-        e = datetime.strptime(rcptend, fmt) if rcptend else None
-        if b and now < b:
-            return False
-        if e and now > e:
-            return False
-        return True
-    except Exception:
+    """현재가 접수기간 안인가. 소수초 없는 형식('...:00')도 정상 처리(과거엔 %f만 봐서
+    소수초 없는 응답을 전부 '기간 밖'으로 오분류하던 버그)."""
+    b = _parse_dt(rcptbgn)
+    e = _parse_dt(rcptend)
+    if b and now < b:
         return False
+    if e and now > e:
+        return False
+    return True
 
 
 # ── 1회 폴링 ─────────────────────────────────────────────────────────────
@@ -175,9 +185,11 @@ def poll_once(conn):
                  payat,usetgt,imgurl,first_seen)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(svcid) DO UPDATE SET status=excluded.status,
-                    svcnm=excluded.svcnm, area=excluded.area, minclass=excluded.minclass,
+                    svcnm=excluded.svcnm, area=excluded.area, minclass=excluded.minclass, category=excluded.category,
                     rcptbgn=excluded.rcptbgn, rcptend=excluded.rcptend, updated_at=excluded.updated_at,
-                    payat=excluded.payat, usetgt=excluded.usetgt, imgurl=excluded.imgurl""",
+                    payat=excluded.payat, usetgt=excluded.usetgt, imgurl=excluded.imgurl,
+                    x=excluded.x, y=excluded.y, svcurl=excluded.svcurl""",
+                # 주의: first_seen만 의도적으로 제외(write-once=신규감지). x/y/svcurl은 변할 수 있어 갱신 필수(위치버튼·딥링크).
                 (svcid, service, r.get("SVCNM"), r.get("AREANM"), r.get("MINCLASSNM"), status,
                  r.get("RCPTBGNDT"), r.get("RCPTENDDT"), r.get("X"), r.get("Y"), r.get("SVCURL"), now_s,
                  r.get("PAYATNM"), r.get("USETGTINFO"), r.get("IMGURL"), now_s))
