@@ -86,6 +86,21 @@ void main() {
         reason: '밤에 설치해도 기준선은 잡혀야 아침 폭탄이 없다');
   });
 
+  test('MAJOR-2: allKeys를 발송 전에 저장 → showInstant 실패해도 재발송 안 함(중복 대신 누락)', () async {
+    // 기존 사용자 + 새 이벤트. showInstant는 테스트환경서 던지지만(플러그인 부재),
+    // allKeys가 그 전에 저장되므로 notified가 갱신돼 있어야 함.
+    SharedPreferences.setMockInitialValues({'notified_keys_v1': '[]'});
+    try {
+      await refreshAndNotify(preloaded: feedWithReopens(), now: day);
+    } catch (_) {/* showInstant 플러그인 부재 */}
+    final sp = await SharedPreferences.getInstance();
+    final raw = sp.getString('notified_keys_v1');
+    expect(raw, isNotNull);
+    final keys = (json.decode(raw!) as List).toSet();
+    expect(keys.contains('reopen_S1_2026-07-05 18:48'), true,
+        reason: '발송 전 저장 → 재시도 시 같은 알림 중복 발송 안 됨');
+  });
+
   test('엣지: 손상된 notified 저장값 → 크래시 없이 self-heal(영구 알림 실패 방지, MAJOR-2)', () async {
     SharedPreferences.setMockInitialValues({
       'notified_keys_v1': '{깨진 JSON!!', // 쓰기 중 크래시 등으로 손상됨

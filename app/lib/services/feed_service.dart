@@ -15,7 +15,16 @@ class FeedService {
   static const _cacheName = 'feed_cache.json';
   static const _timeout = Duration(seconds: 15);
 
+  // 테스트 주입용(기본은 실제 http/앱 지원 디렉터리). 프로덕션 코드에선 넘기지 않는다.
+  final http.Client _client;
+  final File? _cacheOverride;
+
+  FeedService({http.Client? client, File? cacheFile})
+      : _client = client ?? http.Client(),
+        _cacheOverride = cacheFile;
+
   Future<File> _cacheFile() async {
+    if (_cacheOverride != null) return _cacheOverride;
     final dir = await getApplicationSupportDirectory();
     return File('${dir.path}/$_cacheName');
   }
@@ -24,13 +33,17 @@ class FeedService {
   /// 실패 시 캐시 폴백, 캐시도 없으면 예외(첫 실행 + 오프라인).
   Future<({Feed feed, bool fromCache})> load() async {
     try {
-      final res = await http.get(Uri.parse(feedUrl)).timeout(_timeout);
+      final res = await _client.get(Uri.parse(feedUrl)).timeout(_timeout);
       if (res.statusCode == 200) {
         // bodyBytes로 UTF-8 명시 디코드 (한글 — content-type 헤더에 의존하지 않음)
         final body = utf8.decode(res.bodyBytes);
         final feed = Feed.fromJson(json.decode(body) as Map<String, dynamic>);
         try {
-          await (await _cacheFile()).writeAsString(body);
+          // 원자적 쓰기: 임시파일에 쓰고 rename → 쓰는 중 프로세스 강제종료돼도 기존 캐시 안 깨짐
+          final f = await _cacheFile();
+          final tmp = File('${f.path}.tmp');
+          await tmp.writeAsString(body);
+          await tmp.rename(f.path);
         } catch (_) {/* 캐시 실패는 치명 아님 */}
         return (feed: feed, fromCache: false);
       }

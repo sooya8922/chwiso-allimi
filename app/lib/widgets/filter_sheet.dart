@@ -20,7 +20,8 @@ class FilterSheet extends StatefulWidget {
 }
 
 class _FilterSheetState extends State<FilterSheet> {
-  late Set<String> areas = {...widget.initial.areas};
+  // 현재 feed에 없는 저장된 지역은 칩이 안 그려져 보이지도/해제도 못 함(유령 필터) → 교집합만 유지.
+  late Set<String> areas = widget.initial.areas.intersection(widget.availableAreas.toSet());
   late bool freeOnly = widget.initial.freeOnly;
   late Set<String> targets = {...widget.initial.targets};
   late QuietConfig quiet = widget.initialQuiet;
@@ -99,7 +100,7 @@ class _FilterSheetState extends State<FilterSheet> {
                 TextField(
                   controller: kwCtrl,
                   decoration: const InputDecoration(
-                      hintText: '예: 방학, 원예, 목공', border: OutlineInputBorder(), isDense: true),
+                      hintText: '예: 방학 원예 목공 (쉼표·띄어쓰기로 구분)', border: OutlineInputBorder(), isDense: true),
                 ),
                 const SizedBox(height: 16),
                 Text('지역 (${areas.isEmpty ? '전체' : '${areas.length}개'})',
@@ -134,6 +135,13 @@ class _FilterSheetState extends State<FilterSheet> {
                     const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('까지')),
                   ],
                 ),
+                // start==end면 조용시간이 실제로 적용 안 됨 — 사용자가 오해하지 않게 경고
+                if (quiet.enabled && quiet.startHour == quiet.endHour)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8, top: 4),
+                    child: Text('같은 시간이라 조용시간이 적용되지 않아요',
+                        style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.error)),
+                  ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('조용시간에도 ⏰ 접수 알람은 울리기'),

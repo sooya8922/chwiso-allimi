@@ -48,13 +48,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _init();
   }
 
+  bool _refreshing = false;
+
   Future<void> _init() async {
-    _sub = await _prefsSvc.load();
-    _quiet = await _prefsSvc.loadQuiet();
+    // prefs 로드 실패(일부 OEM 저장소 이슈)여도 기본값으로 진행 — 무한 로딩 스피너 방지.
+    try {
+      _sub = await _prefsSvc.load();
+      _quiet = await _prefsSvc.loadQuiet();
+    } catch (_) {/* 필드 기본값 사용 */}
     await _refresh();
   }
 
   Future<void> _refresh() async {
+    if (_refreshing) return; // 중복 호출(연타/동시 pull) 디바운스
+    _refreshing = true;
     setState(() => _error = null);
     try {
       final r = await _feedSvc.load();
@@ -67,7 +74,11 @@ class _HomeScreenState extends State<HomeScreen> {
         await widget.onFeedLoaded?.call(r.feed);
       } catch (_) {}
     } catch (e) {
-      setState(() => _error = e);
+      // feed 버전 불일치는 네트워크 문제가 아니라 앱 업데이트 필요 — 메시지를 구분.
+      final isVersion = e is FormatException && e.message.contains('feed version');
+      setState(() => _error = isVersion ? '앱을 업데이트해 주세요 (새 데이터 형식)' : e);
+    } finally {
+      _refreshing = false;
     }
   }
 
@@ -88,8 +99,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _sub = result.sub;
         _quiet = result.quiet;
       });
-      await _prefsSvc.save(result.sub);
-      await _prefsSvc.saveQuiet(result.quiet);
+      try {
+        await _prefsSvc.save(result.sub);
+        await _prefsSvc.saveQuiet(result.quiet);
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('설정 저장 실패 — 앱 재시작 시 이전 설정으로 돌아갈 수 있어요')));
+        }
+      }
       // 조건/조용시간이 바뀌면 알람 대상도 바뀐다 → 재계획
       final f = _feed;
       if (f != null) {
@@ -236,11 +254,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _body() {
     if (_error != null && _feed == null) {
+      // _error가 문자열(버전 안내 등)이면 그대로, 아니면 기본 네트워크 메시지
+      final msg = _error is String
+          ? _error as String
+          : '데이터를 불러오지 못했어요.\n네트워크 연결을 확인해 주세요.';
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.cloud_off, size: 48),
           const SizedBox(height: 12),
-          const Text('데이터를 불러오지 못했어요.\n네트워크 연결을 확인해 주세요.', textAlign: TextAlign.center),
+          Text(msg, textAlign: TextAlign.center),
           const SizedBox(height: 12),
           FilledButton(onPressed: _refresh, child: const Text('다시 시도')),
         ]),
@@ -288,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: TabBarView(children: [
             _courseList(open, empty: '조건에 맞는 접수중 강좌가 없어요'),
-            _upcomingList(upcoming, byId),
+            _upcomingList(upcoming, byId, now), // now 공유 — 필터/표시 시각 불일치 방지
             _newsList(feed, byId),
           ]),
         ),
@@ -307,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _upcomingList(List<UpcomingOpening> ups, Map<String, Course> byId) {
+  Widget _upcomingList(List<UpcomingOpening> ups, Map<String, Course> byId, DateTime now) {
     if (ups.isEmpty) return const Center(child: Text('조건에 맞는 오픈 예정 강좌가 없어요'));
     return ListView.builder(
       itemCount: ups.length,
@@ -318,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
           leading: const Icon(Icons.alarm),
           title: Text(u.name, maxLines: 2, overflow: TextOverflow.ellipsis),
           subtitle: Text('${u.area.isEmpty ? '서울전역' : u.area} · ${u.openAt} 접수 시작'),
-          trailing: Text(leadLabel(u.openAtDt, (widget.clock ?? kstNow)()), style: const TextStyle(fontWeight: FontWeight.w600)),
+          trailing: Text(leadLabel(u.openAtDt, now), style: const TextStyle(fontWeight: FontWeight.w600)),
           onTap: c == null
               ? null
               : () => showModalBottomSheet(
