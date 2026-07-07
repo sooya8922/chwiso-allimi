@@ -33,6 +33,9 @@ NEW_WINDOW_H = 48       # 이 시간 안에 처음 본 강좌 = '신규'
 REOPEN_WINDOW_D = 7     # 이 기간의 재오픈 이벤트만 노출
 FEED_STATUSES = ("접수중", "안내중", "예약마감")  # 접수종료/예약일시중지 제외
 
+# 데이터 출처 — v2에서 백화점/마트 문화센터가 붙을 자리. 지금은 서울 공공강좌 단일.
+SOURCE = os.environ.get("FEED_SOURCE", "seoul_public")
+
 
 def clean(s):
     """HTML 엔티티 해제 + 공백 정리. None-safe."""
@@ -66,6 +69,7 @@ def main():
         bgn = parse_dt(r["rcptbgn"])
         c = {
             "id": r["svcid"],
+            "source": SOURCE,                          # v2 확장 구멍: 데이터 출처(공공/백화점…) 구분자
             "name": clean(r["svcnm"]),
             "area": clean(r["area"]),                  # 엣지: 빈 문자열 가능(1.4%) — 앱은 '서울 전역'으로 표기
             "cat": clean(r["minclass"]),
@@ -98,6 +102,7 @@ def main():
     feed = {
         "version": 1,
         "generated_at": now_s,
+        "sources": [SOURCE],   # v2 확장 구멍: 이 feed에 포함된 출처 목록
         "counts": {"courses": len(courses), "new": len(new),
                    "reopened": len(reopened), "upcoming": len(upcoming)},
         "courses": courses,

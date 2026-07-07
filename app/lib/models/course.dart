@@ -3,8 +3,26 @@
 library;
 
 /// 강좌 하나. 필드는 feed의 courses[] 원소와 동일.
+/// 데이터 출처. v2에서 백화점/마트가 추가될 자리. 미지정(구 feed)은 공공강좌로 간주.
+class CourseSource {
+  static const seoulPublic = 'seoul_public';
+
+  /// 출처 → 한국어 라벨. 모르는 출처는 그대로 노출(전방호환).
+  static String label(String s) => switch (s) {
+        seoulPublic => '서울 공공',
+        'homeplus' => '홈플러스',
+        'emart' => '이마트',
+        'hyundai' => '현대백화점',
+        'lottemart' => '롯데마트',
+        'lotte' => '롯데백화점',
+        'shinsegae' => '신세계',
+        _ => s,
+      };
+}
+
 class Course {
   final String id;
+  final String source; // 데이터 출처 (기본 seoul_public)
   final String name;
   final String area; // 빈 문자열 가능(약 1.4%) → UI에서는 areaLabel 사용
   final String cat;
@@ -20,6 +38,7 @@ class Course {
 
   const Course({
     required this.id,
+    this.source = CourseSource.seoulPublic,
     required this.name,
     required this.area,
     required this.cat,
@@ -39,6 +58,10 @@ class Course {
 
   bool get isFree => pay == '무료';
   bool get isOpen => status == '접수중';
+
+  /// 지도로 열 수 있는 유효 좌표가 있는가 (약 98%). 0/빈값/범위밖은 제외.
+  bool get hasLocation =>
+      x != null && y != null && x != 0 && y != 0 && x!.abs() <= 180 && y!.abs() <= 90;
 
   /// 지금 실질적으로 접수 가능한가 — 서버 상태(SVCSTATNM)는 야간 배치로만 갱신되므로
   /// '안내중'이어도 접수기간(RCPTBGNDT~ENDDT)이 시작됐으면 열린 것으로 취급한다
@@ -71,6 +94,8 @@ class Course {
 
   factory Course.fromJson(Map<String, dynamic> j) => Course(
         id: (j['id'] ?? '') as String,
+        // 구 feed엔 source 없음 → 공공강좌 기본값(전방호환)
+        source: (j['source'] ?? CourseSource.seoulPublic) as String,
         name: (j['name'] ?? '') as String,
         area: (j['area'] ?? '') as String,
         cat: (j['cat'] ?? '') as String,
@@ -152,6 +177,7 @@ class ReopenEvent {
 class Feed {
   final int version;
   final String generatedAt;
+  final List<String> sources; // 이 feed에 담긴 출처 목록(v2 확장 구멍). 구 feed는 [seoul_public]
   final List<Course> courses;
   final List<NewCourseEvent> newCourses;
   final List<ReopenEvent> reopened;
@@ -160,6 +186,7 @@ class Feed {
   const Feed({
     required this.version,
     required this.generatedAt,
+    required this.sources,
     required this.courses,
     required this.newCourses,
     required this.reopened,
@@ -177,6 +204,7 @@ class Feed {
     return Feed(
       version: version,
       generatedAt: (j['generated_at'] ?? '') as String,
+      sources: ((j['sources'] ?? const [CourseSource.seoulPublic]) as List).map((e) => e.toString()).toList(),
       courses: parseList('courses', Course.fromJson),
       newCourses: parseList('new', NewCourseEvent.fromJson),
       reopened: parseList('reopened', ReopenEvent.fromJson),

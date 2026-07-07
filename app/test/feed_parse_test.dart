@@ -8,9 +8,10 @@ const sampleFeed = '''
 {
   "version": 1,
   "generated_at": "2026-07-04 13:06:43",
+  "sources": ["seoul_public"],
   "counts": {"courses": 3, "new": 1, "reopened": 1, "upcoming": 1},
   "courses": [
-    {"id":"S1","name":"[월드컵공원] 꽁지 불빛 반딧불이 해설(7월)","area":"마포구","cat":"자연/과학",
+    {"id":"S1","source":"seoul_public","name":"[월드컵공원] 꽁지 불빛 반딧불이 해설(7월)","area":"마포구","cat":"자연/과학",
      "status":"접수중","pay":"무료","target":" 어린이(가족)","rcpt_bgn":"2026-06-25 10:00",
      "rcpt_end":"2026-07-20 18:00","x":"126.87948","y":"37.57006",
      "url":"https://yeyak.seoul.go.kr/web/reservation/selectReservView.do?rsv_svc_id=S1","img":"https://x/i.jpg"},
@@ -76,6 +77,33 @@ void main() {
       expect(u.leadMin, 2636);
       expect(u.openAtDt, DateTime(2026, 7, 6, 10, 0));
     });
+  });
+
+  group('source 필드(v2 확장 구멍)', () {
+    final feed = Feed.fromJson(json.decode(sampleFeed) as Map<String, dynamic>);
+    test('feed.sources 파싱', () => expect(feed.sources, ['seoul_public']));
+    test('course.source 파싱', () => expect(feed.courses[0].source, 'seoul_public'));
+    test('엣지: source 없는 강좌 → 공공강좌 기본값(전방호환)', () {
+      final c = Course.fromJson(const {'id': 'X'});
+      expect(c.source, CourseSource.seoulPublic);
+    });
+    test('엣지: sources 없는 feed → [seoul_public]', () {
+      final f = Feed.fromJson(const {'version': 1, 'generated_at': 'x'});
+      expect(f.sources, ['seoul_public']);
+    });
+    test('출처 라벨 매핑 + 미지 출처 그대로', () {
+      expect(CourseSource.label('seoul_public'), '서울 공공');
+      expect(CourseSource.label('homeplus'), '홈플러스');
+      expect(CourseSource.label('unknown_x'), 'unknown_x');
+    });
+  });
+
+  group('hasLocation — 위치 버튼 노출 조건', () {
+    Course withXY(String x, String y) => Course.fromJson({'id': 'S', 'x': x, 'y': y});
+    test('정상 좌표 → true', () => expect(withXY('126.9', '37.5').hasLocation, true));
+    test('엣지: 빈 좌표 → false', () => expect(withXY('', '').hasLocation, false));
+    test('엣지: 0,0 → false', () => expect(withXY('0', '0').hasLocation, false));
+    test('엣지: 범위 밖 → false', () => expect(withXY('999', '37.5').hasLocation, false));
   });
 
   group('effectivelyOpen — 실시간 재분류(M4 표시 결함 고정)', () {

@@ -113,10 +113,36 @@ class CourseCard extends StatelessWidget {
                       : () => launchUrl(Uri.parse(course.url), mode: LaunchMode.externalApplication),
                 ),
               ),
+              // 위치 보기 — 좌표 있는 강좌만(약 98%). 온라인 예매지만 '갈 만한 거리인지' 판단 보조.
+              if (course.hasLocation) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.place_outlined),
+                    label: const Text('위치 보기'),
+                    onPressed: () => _openMap(course),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// 좌표를 지도 앱으로 연다. geo: URI(설치된 지도앱 선택) → 실패 시 지도 웹으로 폴백.
+  Future<void> _openMap(Course c) async {
+    final lat = c.y, lng = c.x; // yeyak: X=경도, Y=위도
+    final label = Uri.encodeComponent(c.name);
+    final geo = Uri.parse('geo:$lat,$lng?q=$lat,$lng($label)');
+    if (await canLaunchUrl(geo)) {
+      await launchUrl(geo, mode: LaunchMode.externalApplication);
+      return;
+    }
+    // 폴백: 지도 웹(브라우저) — geo 핸들러가 없는 기기 대비
+    final web = Uri.parse('https://map.kakao.com/link/map/$label,$lat,$lng');
+    await launchUrl(web, mode: LaunchMode.externalApplication);
   }
 }
