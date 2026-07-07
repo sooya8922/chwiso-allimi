@@ -88,6 +88,27 @@ bool inQuietHours(DateTime now, [QuietConfig cfg = const QuietConfig()]) {
       : (h >= cfg.startHour || h < cfg.endHour);
 }
 
+/// 즉시알림이 한 번에 [threshold]건을 넘으면 요약 1건으로 묶는다 —
+/// 필터 없이 쓰는 사용자가 아침마다 수십 건 도배당하는 것 방지(M4 실기기 피드백).
+/// 개별 키 마킹은 호출측의 allKeys 저장이 담당하므로 여기선 표시만 바꾼다.
+List<PlannedNotification> summarizeBurst(List<PlannedNotification> toShow, {int threshold = 5}) {
+  if (toShow.length <= threshold) return toShow;
+  final reopens = toShow.where((n) => n.key.startsWith('reopen_')).length;
+  final news = toShow.length - reopens;
+  final parts = <String>[
+    if (news > 0) '🆕 새 강좌 $news건',
+    if (reopens > 0) '🔓 재오픈 $reopens건',
+  ];
+  return [
+    PlannedNotification(
+      key: 'burst_summary',
+      title: '🔔 새 소식 ${toShow.length}건',
+      body: '${parts.join(' · ')} — 눌러서 확인하세요',
+      url: '', // 탭하면 앱이 열린다(딥링크 없음)
+    ),
+  ];
+}
+
 /// 알람 목록에 조용시간 정책 적용 — alarmsExempt면 그대로, 아니면 조용시간에
 /// 울릴 알람 제거(미루면 접수 시작을 지나버려 의미가 없으므로 제거가 정직하다).
 List<PlannedAlarm> applyQuietToAlarms(List<PlannedAlarm> alarms, QuietConfig cfg) {

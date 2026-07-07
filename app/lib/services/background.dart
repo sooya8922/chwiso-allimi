@@ -62,8 +62,8 @@ Future<void> refreshAndNotify({Feed? preloaded, DateTime? now}) async {
         ((json.decode(storedRaw ?? '[]') as List).map((e) => e.toString())).toSet();
     final plan = planInstantNotifications(feed, sub, notified);
     if (storedRaw != null) {
-      // 평상시: 새 이벤트만 발송
-      for (final n in plan.toShow) {
+      // 평상시: 새 이벤트만 발송 (폭주 시 요약 1건으로 묶음)
+      for (final n in summarizeBurst(plan.toShow)) {
         await NotificationService.showInstant(n);
       }
     }

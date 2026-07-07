@@ -334,6 +334,34 @@ void main() {
     });
   });
 
+  group('summarizeBurst — 알림 폭주 요약(M4 아침 도배 피드백)', () {
+    PlannedNotification pn(String key) =>
+        PlannedNotification(key: key, title: 't', body: 'b', url: '');
+
+    test('임계 이하(5건)는 그대로', () {
+      final list = List.generate(5, (i) => pn('reopen_S${i}_x'));
+      expect(summarizeBurst(list).length, 5);
+    });
+    test('임계 초과 → 요약 1건 + 종류별 카운트', () {
+      final list = [
+        ...List.generate(6, (i) => pn('reopen_S${i}_x')),
+        ...List.generate(3, (i) => pn('new_N$i')),
+      ];
+      final out = summarizeBurst(list);
+      expect(out.length, 1);
+      expect(out[0].title, contains('9건'));
+      expect(out[0].body, contains('새 강좌 3건'));
+      expect(out[0].body, contains('재오픈 6건'));
+    });
+    test('엣지: 0건 → 그대로 0건(요약 안 만듦)', () {
+      expect(summarizeBurst(const []), isEmpty);
+    });
+    test('엣지: 전부 신규(재오픈 0)면 재오픈 문구 없음', () {
+      final out = summarizeBurst(List.generate(7, (i) => pn('new_N$i')));
+      expect(out[0].body.contains('재오픈'), false);
+    });
+  });
+
   group('직렬화 왕복(백그라운드 저장 경로)', () {
     test('notified 셋 JSON 왕복', () {
       final s = {'new_S1', 'reopen_S2_2026-07-03 20:20'};
