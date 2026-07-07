@@ -78,6 +78,24 @@ void main() {
     });
   });
 
+  group('effectivelyOpen — 실시간 재분류(M4 표시 결함 고정)', () {
+    Course mk(String status, {String bgn = '2026-07-06 10:00', String end = '2026-07-20 18:00'}) =>
+        Course.fromJson({'id': 'S1', 'status': status, 'rcpt_bgn': bgn, 'rcpt_end': end});
+    final beforeOpen = DateTime(2026, 7, 6, 9, 0);
+    final afterOpen = DateTime(2026, 7, 6, 12, 0);
+    final afterEnd = DateTime(2026, 7, 21, 0, 0);
+
+    test('접수중은 항상 open', () => expect(mk('접수중').effectivelyOpen(beforeOpen), true));
+    test('안내중 + 접수시작 전 → 아직 아님', () => expect(mk('안내중').effectivelyOpen(beforeOpen), false));
+    test('안내중 + 접수기간 내 → 실질 오픈(넷마블 케이스)', () => expect(mk('안내중').effectivelyOpen(afterOpen), true));
+    test('엣지: 안내중 + 접수 마감 지남 → 닫힘', () => expect(mk('안내중').effectivelyOpen(afterEnd), false));
+    test('엣지: 안내중 + rcpt_end 없음 → 시작만 지났으면 오픈', () =>
+        expect(mk('안내중', end: '').effectivelyOpen(afterEnd), true));
+    test('엣지: 예약마감은 기간 내라도 닫힘', () => expect(mk('예약마감').effectivelyOpen(afterOpen), false));
+    test('엣지: 경계 — 정확히 접수시작 시각', () =>
+        expect(mk('안내중').effectivelyOpen(DateTime(2026, 7, 6, 10, 0)), true));
+  });
+
   group('Feed 방어', () {
     test('엣지: 미래 스키마 버전 → 명시적 예외', () {
       expect(() => Feed.fromJson(const {'version': 2}), throwsFormatException);

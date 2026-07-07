@@ -22,7 +22,11 @@ class HomeScreen extends StatefulWidget {
   /// 알림/백그라운드 초기화 오류(진단용 배너). null이면 정상.
   final ValueListenable<String?>? initError;
 
-  const HomeScreen({super.key, this.feedService, this.prefsService, this.onFeedLoaded, this.initError});
+  /// 현재 시각 공급자 — 테스트에서 고정 시각 주입용(기본 = kstNow)
+  final DateTime Function()? clock;
+
+  const HomeScreen(
+      {super.key, this.feedService, this.prefsService, this.onFeedLoaded, this.initError, this.clock});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -245,9 +249,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final feed = _feed;
     if (feed == null) return const Center(child: CircularProgressIndicator());
 
-    final open = filterCourses(feed.courses.where((c) => c.isOpen).toList(), _sub);
+    // feed의 분류는 서버 생성 시점 기준 → 기기 시각으로 실시간 재분류
+    // (오픈 지난 항목은 오픈예정에서 제거하고, 접수기간 시작된 '안내중'은 접수중으로)
+    final now = (widget.clock ?? kstNow)();
+    final open = filterCourses(feed.courses.where((c) => c.effectivelyOpen(now)).toList(), _sub);
     final byId = {for (final c in feed.courses) c.id: c};
     final upcoming = feed.upcoming.where((u) {
+      final openAt = u.openAtDt;
+      if (openAt == null || !openAt.isAfter(now)) return false; // 이미 오픈 → 예정에서 제거
       final c = byId[u.id];
       return c == null || matches(c, _sub);
     }).toList();
@@ -309,7 +318,7 @@ class _HomeScreenState extends State<HomeScreen> {
           leading: const Icon(Icons.alarm),
           title: Text(u.name, maxLines: 2, overflow: TextOverflow.ellipsis),
           subtitle: Text('${u.area.isEmpty ? '서울전역' : u.area} · ${u.openAt} 접수 시작'),
-          trailing: Text(leadLabel(u.openAtDt, kstNow()), style: const TextStyle(fontWeight: FontWeight.w600)),
+          trailing: Text(leadLabel(u.openAtDt, (widget.clock ?? kstNow)()), style: const TextStyle(fontWeight: FontWeight.w600)),
           onTap: c == null
               ? null
               : () => showModalBottomSheet(

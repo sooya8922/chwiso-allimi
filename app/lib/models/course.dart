@@ -40,6 +40,18 @@ class Course {
   bool get isFree => pay == '무료';
   bool get isOpen => status == '접수중';
 
+  /// 지금 실질적으로 접수 가능한가 — 서버 상태(SVCSTATNM)는 야간 배치로만 갱신되므로
+  /// '안내중'이어도 접수기간(RCPTBGNDT~ENDDT)이 시작됐으면 열린 것으로 취급한다
+  /// (M4 실기기: 10시 오픈이 지나도 오픈예정 탭에 남아있던 표시 결함의 수정).
+  bool effectivelyOpen(DateTime now) {
+    if (isOpen) return true;
+    if (status != '안내중') return false;
+    final bgn = rcptBgnDt;
+    if (bgn == null || bgn.isAfter(now)) return false;
+    final end = rcptEndDt;
+    return end == null || !now.isAfter(end);
+  }
+
   /// 접수 시작이 미래인가 (upcoming 판단은 서버 feed에도 있지만 클라에서도 계산 가능해야 함)
   DateTime? get rcptBgnDt => _parseDt(rcptBgn);
   DateTime? get rcptEndDt => _parseDt(rcptEnd);

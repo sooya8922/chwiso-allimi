@@ -41,8 +41,12 @@ class FakePrefsService extends PrefsService {
   Future<void> saveQuiet(QuietConfig q) async => storedQuiet = q;
 }
 
-Widget app({bool fail = false}) => MaterialApp(
-      home: HomeScreen(feedService: FakeFeedService(fail: fail), prefsService: FakePrefsService()),
+Widget app({bool fail = false, DateTime? clock}) => MaterialApp(
+      home: HomeScreen(
+        feedService: FakeFeedService(fail: fail),
+        prefsService: FakePrefsService(),
+        clock: () => clock ?? DateTime(2026, 7, 4, 13, 0), // 고정 시계(테스트 결정성)
+      ),
     );
 
 void main() {
@@ -77,6 +81,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('새로 올라온 강좌'), findsOneWidget);
     expect(find.textContaining('다시 열린 강좌'), findsOneWidget);
+  });
+
+  testWidgets('실시간 재분류: 오픈 지난 강좌는 오픈예정에서 빠지고 접수중으로 (M4 넷마블 케이스)', (tester) async {
+    // S2(가드닝): 안내중, rcpt_bgn=7/6 10:00, upcoming open_at=7/6 10:00.
+    // 시계를 7/6 12:00으로 → 오픈예정에서 사라지고 접수중 탭에 나타나야 한다.
+    await tester.pumpWidget(app(clock: DateTime(2026, 7, 6, 12, 0)));
+    await tester.pump();
+    await tester.pump();
+
+    // 접수중 탭(기본): 가드닝이 '실질 오픈'으로 승격되어 보임
+    expect(find.textContaining('가드닝'), findsOneWidget);
+
+    await tester.tap(find.text('오픈예정'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('가드닝'), findsNothing, reason: '이미 오픈 → 예정 목록에서 제거');
   });
 
   testWidgets('실패 경로(오프라인 첫 실행): 크래시 없이 오류 UI + 다시 시도', (tester) async {
