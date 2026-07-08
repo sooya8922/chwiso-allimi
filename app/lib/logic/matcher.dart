@@ -57,9 +57,23 @@ final Map<String, RegExp> _targetPatterns = {
   'senior': RegExp(r'노인|어르신|시니어|[456][05]\s*세\s*이상'),
 };
 
+/// USETGTINFO의 괄호 속 부가설명을 제거해 '진짜 대상군'만 남긴다.
+/// 예) '성인(어르신(만 60세 이상)), 장애인(초등학생 수준 이상)' → '성인, 장애인'
+///   ← 이렇게 안 하면 '장애인(초등학생 수준)'의 '초등'을 어린이로 오판(실기기 버그).
+/// 중첩 괄호도 안쪽부터 반복 제거.
+String stripTargetDetail(String s) {
+  var t = s;
+  final inner = RegExp(r'\([^()]*\)');
+  while (inner.hasMatch(t)) {
+    t = t.replaceAll(inner, '');
+  }
+  return t;
+}
+
 bool _matchTarget(Course c, Set<String> targets) {
   if (targets.isEmpty) return true;
-  final text = '${c.target} ${c.name}';
+  // 대상(target)은 괄호 부가설명 제거 후 매칭. 이름(name)은 대상 표기가 자주 들어가 그대로 사용.
+  final text = '${stripTargetDetail(c.target)} ${c.name}';
   return targets.any((t) => _targetPatterns[t]?.hasMatch(text) ?? false);
 }
 

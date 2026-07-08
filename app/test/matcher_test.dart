@@ -58,16 +58,42 @@ void main() {
       expect(matches(mk(target: '', name: '[방학특강/ 초1-3] 라임 썸머스쿨'), s), true, reason: 'target 비어도 name에서 흡수');
       expect(matches(mk(target: '성인'), s), false);
     });
-    test('senior: 실측 표현("55세 이상 성인") 흡수', () {
+    test('senior: 실측 표현 흡수 (실데이터는 대부분 최상위에 "어르신")', () {
       const s = Subscription(targets: {'senior'});
-      expect(matches(mk(target: ' 성인(55세 이상 성인)'), s), true);
-      expect(matches(mk(target: '어르신 대상'), s), true);
+      expect(matches(mk(target: '성인, 어르신'), s), true); // 실 형식: 최상위 어르신
+      expect(matches(mk(target: '어르신'), s), true);
+      expect(matches(mk(target: '65세 이상'), s), true); // 괄호 밖 나이 표기
       expect(matches(mk(target: '어린이'), s), false);
     });
     test('복수 대상 = OR', () {
       const s = Subscription(targets: {'kids', 'senior'});
       expect(matches(mk(target: '어린이'), s), true);
       expect(matches(mk(target: '65세 이상'), s), true);
+    });
+
+    test('실기기 버그: 어르신/장애인 강좌가 어린이 필터에 오매칭되면 안 됨', () {
+      // 실 데이터: target 부가설명 '장애인(초등학생 수준 이상)'의 "초등"이 어린이로 오판되던 케이스
+      const kids = Subscription(targets: {'kids'});
+      final senior = mk(
+        target: '성인(어르신(만 60세 이상)), 장애인(초등학생 수준 이상)',
+        name: '[현장/단체/어르신/장애인]신통방통 하수와 만나다!',
+      );
+      expect(matches(senior, kids), false, reason: '괄호 속 초등학생 수준=난이도, 대상 아님');
+      // 반면 진짜 학생 대상은 여전히 매칭
+      final student = mk(
+        target: '청소년(중고등학생 학급 단체), 초등학생(초4~6학년 학급 단체)',
+        name: '[현장&비대면/단체/초4.중.고등] 나도 수질연구사!',
+      );
+      expect(matches(student, kids), true, reason: '최상위 대상 초등학생 → 어린이 매칭');
+      // 어르신 필터로는 신통방통이 잡혀야 함
+      expect(matches(senior, const Subscription(targets: {'senior'})), true);
+    });
+
+    test('stripTargetDetail: 중첩 괄호 제거', () {
+      expect(stripTargetDetail('성인(어르신(만 60세 이상)), 장애인(초등학생 수준 이상)'), '성인, 장애인');
+      expect(stripTargetDetail('초등학생(초4~6학년)'), '초등학생');
+      expect(stripTargetDetail('성인'), '성인');
+      expect(stripTargetDetail(''), '');
     });
   });
 
