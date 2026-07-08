@@ -3,11 +3,16 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/course.dart';
 
-/// geo: URI 문자열 생성(순수 함수, 테스트 대상). 라벨의 괄호는 geo 구분자와 충돌하므로
-/// Uri.encodeComponent(괄호 미인코딩) 후 () 를 수동 인코딩한다.
-String buildGeoUri(double lng, double lat, String name) {
-  final label = Uri.encodeComponent(name).replaceAll('(', '%28').replaceAll(')', '%29');
-  return 'geo:$lat,$lng?q=$lat,$lng($label)';
+/// 카카오맵 웹링크 생성(순수 함수, 테스트 대상). 설치 시 카카오맵 앱으로 자동 전환,
+/// 미설치 시 브라우저에서 지도 표시. 좌표 순서는 name,위도(lat),경도(lng).
+/// 이름의 쉼표는 링크 구분자와 충돌하므로 encodeComponent가 %2C로 인코딩(구분자 보호).
+String buildKakaoMapUrl(double lng, double lat, String name) {
+  return 'https://map.kakao.com/link/map/${Uri.encodeComponent(name)},$lat,$lng';
+}
+
+/// 구글지도 범용 URL(항상 렌더되는 최종 폴백). 지도앱 없어도 브라우저에서 핀 표시.
+String buildGoogleMapUrl(double lng, double lat) {
+  return 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
 }
 
 /// 강좌 카드 — 리스트의 기본 단위.
@@ -139,17 +144,13 @@ class CourseCard extends StatelessWidget {
     );
   }
 
-  /// 좌표를 지도 앱으로 연다. geo: URI(설치된 지도앱 선택) → 실패 시 지도 웹으로 폴백.
+  /// 좌표를 지도로 연다. geo: 스킴은 지도앱 없는 폰(갤럭시 등)에서 브라우저로 라우팅돼
+  /// "존재하지 않는 URL" 오류가 나므로 사용 안 함(실기기 제보) → 카카오맵 웹링크 우선,
+  /// 실패 시 구글지도 범용 URL(브라우저에서 항상 렌더).
   Future<void> _openMap(Course c) async {
     final lat = c.y!, lng = c.x!; // yeyak: X=경도, Y=위도 (hasLocation 가드로 non-null 보장)
-    final geo = Uri.parse(buildGeoUri(lng, lat, c.name));
-    if (await canLaunchUrl(geo)) {
-      await launchUrl(geo, mode: LaunchMode.externalApplication);
-      return;
-    }
-    // 폴백: 지도 웹(브라우저) — geo 핸들러가 없는 기기 대비. 이름은 경로 세그먼트로 인코딩.
-    final web = Uri.parse(
-        'https://map.kakao.com/link/map/${Uri.encodeComponent(c.name)},$lat,$lng');
-    await launchUrl(web, mode: LaunchMode.externalApplication);
+    final kakao = Uri.parse(buildKakaoMapUrl(lng, lat, c.name));
+    if (await launchUrl(kakao, mode: LaunchMode.externalApplication)) return;
+    await launchUrl(Uri.parse(buildGoogleMapUrl(lng, lat)), mode: LaunchMode.externalApplication);
   }
 }
