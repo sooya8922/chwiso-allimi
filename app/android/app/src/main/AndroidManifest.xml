@@ -62,5 +62,19 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- 위치 보기: 카카오맵/네이버지도 앱 스킴을 canLaunchUrl로 조회하려면 선언 필요(Android 11+) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="kakaomap"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="nmap"/>
+        </intent>
+        <!-- 구글지도 웹 폴백(https) 조회용 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>

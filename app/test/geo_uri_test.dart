@@ -1,22 +1,43 @@
-// 지도 URL 순수 함수 테스트 — geo:/카카오앱링크가 특정 폰·강좌에서 오류 나던 문제(실기기 반복 제보)
-// 를 구글지도 범용 URL(좌표만, 이름 미포함)로 교체한 뒤의 회귀 방지.
+// 지도 URL 후보 목록 테스트 — 카카오맵→네이버맵→구글지도 우선순위 + 각 URL 형식.
+// 앱 스킴은 canLaunchUrl로 설치 판정 후 실행되므로 오류 화면 없이 조용히 폴백된다(실기기 제보 반영).
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yeollim_allim/widgets/course_card.dart';
 
 void main() {
-  group('buildMapUrl', () {
-    test('구글지도 범용 검색 URL 형식(위도,경도)', () {
-      final s = buildMapUrl(126.9, 37.5); // lng, lat
-      expect(s, 'https://www.google.com/maps/search/?api=1&query=37.5,126.9');
-      expect(() => Uri.parse(s), returnsNormally);
+  group('buildMapCandidates', () {
+    final c = buildMapCandidates(126.9, 37.5); // lng, lat
+
+    test('우선순위: 카카오 → 네이버 → 구글(3개)', () {
+      expect(c.length, 3);
+      expect(c[0], startsWith('kakaomap://'));
+      expect(c[1], startsWith('nmap://'));
+      expect(c[2], startsWith('https://www.google.com/maps'));
     });
 
-    test('이름을 안 쓰므로 어떤 좌표에도 URL이 안 깨짐', () {
-      // 문제였던 실 강좌 좌표(성동 하수처리장)로도 유효
-      final s = buildMapUrl(127.05775790548498, 37.55734277961993);
-      expect(() => Uri.parse(s), returnsNormally);
-      expect(s.contains('37.55734277961993'), true);
-      expect(s.contains('127.05775790548498'), true);
+    test('카카오맵: 위도,경도 순', () {
+      expect(c[0], 'kakaomap://look?p=37.5,126.9');
+    });
+
+    test('네이버지도: lat/lng 파라미터', () {
+      expect(c[1], contains('lat=37.5'));
+      expect(c[1], contains('lng=126.9'));
+    });
+
+    test('구글지도 웹: 최종 폴백(항상 열림)', () {
+      expect(c[2], 'https://www.google.com/maps/search/?api=1&query=37.5,126.9');
+    });
+
+    test('모든 후보가 파싱 가능한 유효 URI', () {
+      for (final u in c) {
+        expect(() => Uri.parse(u), returnsNormally, reason: u);
+      }
+    });
+
+    test('좌표만 사용 → 이름 특수문자로 깨질 여지 없음(문제였던 실좌표로도)', () {
+      final r = buildMapCandidates(127.05775790548498, 37.55734277961993);
+      for (final u in r) {
+        expect(() => Uri.parse(u), returnsNormally);
+      }
     });
   });
 }

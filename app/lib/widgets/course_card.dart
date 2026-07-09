@@ -3,11 +3,16 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/course.dart';
 
-/// 지도 URL(순수 함수, 테스트 대상). 구글지도 범용 검색 URL —
-/// 좌표만 쓰고 이름은 안 넣어 어떤 특수문자(대괄호/슬래시/괄호)에도 안 깨진다.
-/// 구글맵 앱 있으면 앱으로, 없으면 브라우저에서 핀 표시. 카카오식 "존재하지 않는 URL" 오류 불가.
-String buildMapUrl(double lng, double lat) {
-  return 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+/// 지도 열기 후보 URL 목록(순수 함수, 테스트 대상). 우선순위: 카카오맵 → 네이버맵 → 구글지도(웹).
+/// 앞의 두 개는 '앱 스킴'이라 canLaunchUrl로 설치 여부를 먼저 판정 → 없으면 실행 안 하고 다음으로
+/// 조용히 폴백(에러 화면 안 뜸). 마지막 구글 웹은 항상 열리는 최종 안전망.
+/// 좌표만 사용하고 이름은 안 넣어 특수문자로 URL이 깨질 여지도 없앤다.
+List<String> buildMapCandidates(double lng, double lat) {
+  return [
+    'kakaomap://look?p=$lat,$lng',                 // 카카오맵 앱
+    'nmap://map?lat=$lat&lng=$lng&zoom=15',        // 네이버지도 앱
+    'https://www.google.com/maps/search/?api=1&query=$lat,$lng', // 구글지도 웹(최종 폴백)
+  ];
 }
 
 /// 강좌 카드 — 리스트의 기본 단위.
@@ -139,11 +144,18 @@ class CourseCard extends StatelessWidget {
     );
   }
 
-  /// 좌표를 지도로 연다. 구글지도 범용 URL만 사용 — geo: 스킴(지도앱 없는 폰서 브라우저로
-  /// 라우팅돼 "존재하지 않는 URL" 오류)도, 카카오 앱링크(앱이 딥링크를 웹과 다르게 처리해
-  /// 오류 가능)도 피한다. 좌표만 넘겨 이름 특수문자로 깨질 여지도 없앰(실기기 반복 제보).
+  /// 좌표를 지도로 연다. 카카오맵→네이버맵→구글지도 순서로, 앱 스킴은 설치돼 있을 때만 실행.
+  /// canLaunchUrl로 미리 판정하므로 지난번 "존재하지 않는 URL" 에러 화면 없이 조용히 폴백된다.
   Future<void> _openMap(Course c) async {
     final lat = c.y!, lng = c.x!; // yeyak: X=경도, Y=위도 (hasLocation 가드로 non-null 보장)
-    await launchUrl(Uri.parse(buildMapUrl(lng, lat)), mode: LaunchMode.externalApplication);
+    final candidates = buildMapCandidates(lng, lat);
+    for (var i = 0; i < candidates.length; i++) {
+      final uri = Uri.parse(candidates[i]);
+      final isLast = i == candidates.length - 1;
+      // 마지막(구글 웹)은 항상 열리므로 판정 없이 실행. 앞의 앱 스킴은 설치 확인 후에만.
+      if (isLast || await canLaunchUrl(uri)) {
+        if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+      }
+    }
   }
 }
