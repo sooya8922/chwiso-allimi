@@ -18,9 +18,11 @@ void main() {
       expect(c[0], 'kakaomap://look?p=37.5,126.9');
     });
 
-    test('네이버지도: lat/lng 파라미터', () {
+    test('네이버지도: place + lat/lng + appname 필수(공식 형식)', () {
+      expect(c[1], startsWith('nmap://place?'));
       expect(c[1], contains('lat=37.5'));
       expect(c[1], contains('lng=126.9'));
+      expect(c[1], contains('appname='), reason: 'appname 없으면 네이버앱이 무시');
     });
 
     test('구글지도 웹: 최종 폴백(항상 열림)', () {
@@ -38,6 +40,35 @@ void main() {
       for (final u in r) {
         expect(() => Uri.parse(u), returnsNormally);
       }
+    });
+
+    test('엣지: 음수 좌표(해외)·0 좌표에도 URL 유효', () {
+      for (final r in [buildMapCandidates(-122.4, 37.7), buildMapCandidates(0, 0)]) {
+        expect(r.length, 3);
+        for (final u in r) {
+          expect(() => Uri.parse(u), returnsNormally);
+        }
+      }
+    });
+
+    test('엣지: 앱 스킴 2개 + 웹 1개 구조 불변(폴백 순서 보장)', () {
+      final r = buildMapCandidates(126.9, 37.5);
+      // 앞 2개는 커스텀 스킴(canLaunchUrl 판정 대상), 마지막은 http(항상 열림)
+      expect(Uri.parse(r[0]).scheme, 'kakaomap');
+      expect(Uri.parse(r[1]).scheme, 'nmap');
+      expect(Uri.parse(r[2]).scheme, 'https');
+    });
+
+    test('네이버 좌표 파라미터가 위도/경도 정확히 매핑(뒤바뀜 방지)', () {
+      final r = buildMapCandidates(126.977, 37.566); // 서울시청 경도,위도
+      final naver = Uri.parse(r[1]);
+      expect(naver.queryParameters['lat'], '37.566');
+      expect(naver.queryParameters['lng'], '126.977');
+    });
+
+    test('카카오 p= 파라미터가 위도,경도 순(뒤바뀜 방지)', () {
+      final r = buildMapCandidates(126.977, 37.566);
+      expect(r[0], 'kakaomap://look?p=37.566,126.977');
     });
   });
 }

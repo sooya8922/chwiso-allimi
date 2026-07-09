@@ -1,7 +1,7 @@
 name: yeollim_allim
 description: "열림알림 — 서울 공공강좌·체험 접수 오픈 알림"
 publish_to: "none"
-version: 0.4.1+18
+version: 0.4.2+19
 
 environment:
   sdk: ^3.5.0

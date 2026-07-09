@@ -17,9 +17,17 @@ class CultureCentersScreen extends StatelessWidget {
     (name: '신세계 아카데미', desc: '신세계백화점 문화 강좌', url: 'https://www.shinsegae.com/culture/academy/index.do'),
   ];
 
-  Future<void> _open(String url) async {
+  Future<void> _open(BuildContext context, String url) async {
     final uri = Uri.tryParse(url);
-    if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+    try {
+      if (uri != null && await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+      throw 'launch failed';
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('페이지를 열 수 없어요')));
+      }
+    }
   }
 
   @override
@@ -44,7 +52,7 @@ class CultureCentersScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: _centers.length,
               separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (_, i) {
+              itemBuilder: (ctx, i) {
                 final c = _centers[i];
                 return ListTile(
                   leading: CircleAvatar(
@@ -54,7 +62,7 @@ class CultureCentersScreen extends StatelessWidget {
                   title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: Text(c.desc, style: const TextStyle(fontSize: 12)),
                   trailing: const Icon(Icons.open_in_new, size: 18),
-                  onTap: () => _open(c.url),
+                  onTap: () => _open(ctx, c.url),
                 );
               },
             ),

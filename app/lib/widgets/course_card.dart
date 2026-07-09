@@ -9,9 +9,12 @@ import '../models/course.dart';
 /// 좌표만 사용하고 이름은 안 넣어 특수문자로 URL이 깨질 여지도 없앤다.
 List<String> buildMapCandidates(double lng, double lat) {
   return [
-    'kakaomap://look?p=$lat,$lng',                 // 카카오맵 앱
-    'nmap://map?lat=$lat&lng=$lng&zoom=15',        // 네이버지도 앱
-    'https://www.google.com/maps/search/?api=1&query=$lat,$lng', // 구글지도 웹(최종 폴백)
+    // 카카오맵: look?p=위도,경도 (공식 문서 확인)
+    'kakaomap://look?p=$lat,$lng',
+    // 네이버지도: place로 마커 표시. appname 필수(없으면 앱이 무시), zoom이 아니라 level.
+    'nmap://place?lat=$lat&lng=$lng&name=%EA%B0%95%EC%A2%8C%20%EC%9C%84%EC%B9%98&appname=com.sooya8922.yeollim',
+    // 구글지도 웹(최종 폴백, 항상 열림)
+    'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
   ];
 }
 
@@ -133,7 +136,7 @@ class CourseCard extends StatelessWidget {
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.place_outlined),
                     label: const Text('위치 보기'),
-                    onPressed: () => _openMap(course),
+                    onPressed: () => _openMap(ctx, course),
                   ),
                 ),
               ],
@@ -145,17 +148,27 @@ class CourseCard extends StatelessWidget {
   }
 
   /// 좌표를 지도로 연다. 카카오맵→네이버맵→구글지도 순서로, 앱 스킴은 설치돼 있을 때만 실행.
-  /// canLaunchUrl로 미리 판정하므로 지난번 "존재하지 않는 URL" 에러 화면 없이 조용히 폴백된다.
-  Future<void> _openMap(Course c) async {
+  /// 각 시도를 try-catch로 감싸 canLaunchUrl/launchUrl이 예외를 던져도(앱 업데이트 중 등)
+  /// 조용히 다음 후보로 폴백한다 — 이게 없으면 카카오맵 있는데 실행 실패 시 무반응(지난 오류).
+  Future<void> _openMap(BuildContext context, Course c) async {
     final lat = c.y!, lng = c.x!; // yeyak: X=경도, Y=위도 (hasLocation 가드로 non-null 보장)
     final candidates = buildMapCandidates(lng, lat);
     for (var i = 0; i < candidates.length; i++) {
       final uri = Uri.parse(candidates[i]);
       final isLast = i == candidates.length - 1;
-      // 마지막(구글 웹)은 항상 열리므로 판정 없이 실행. 앞의 앱 스킴은 설치 확인 후에만.
-      if (isLast || await canLaunchUrl(uri)) {
-        if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+      try {
+        // 마지막(구글 웹)은 항상 열리므로 판정 없이 실행. 앞의 앱 스킴은 설치 확인 후에만.
+        if (isLast || await canLaunchUrl(uri)) {
+          if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+        }
+      } catch (_) {
+        // 이 후보 실패 → 다음 후보로 (조용히)
       }
+    }
+    // 세 후보 전부 실패(브라우저조차 없는 특수 기기 등) → 사용자에게 피드백
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('지도 앱을 열 수 없어요')));
     }
   }
 }

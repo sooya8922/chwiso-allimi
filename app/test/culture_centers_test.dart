@@ -18,4 +18,12 @@ void main() {
     expect(find.textContaining('공식 페이지로 바로 이동'), findsOneWidget);
     expect(find.textContaining('강좌 정보를 수집·제공하지 않습니다'), findsOneWidget);
   });
+
+  testWidgets('링크 탭 시 크래시 없음(launchUrl 미가용 테스트환경서도 방어)', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: CultureCentersScreen()));
+    await tester.tap(find.text('홈플러스 문화센터'));
+    await tester.pumpAndSettle();
+    // 예외를 삼키고 스낵바로 처리 → 위젯 트리 살아있음
+    expect(find.text('홈플러스 문화센터'), findsOneWidget);
+  });
 }
