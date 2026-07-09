@@ -9,6 +9,7 @@ import '../services/notification_service.dart';
 import '../services/prefs_service.dart';
 import '../widgets/course_card.dart';
 import '../widgets/filter_sheet.dart';
+import 'culture_centers_screen.dart';
 
 /// 홈 — 탭 3개: 접수중 / 오픈예정 / 새소식(신규+재오픈)
 /// 서비스는 주입 가능(테스트에서 페이크로 교체 — 네트워크/플러그인 비의존).
@@ -231,6 +232,12 @@ class _HomeScreenState extends State<HomeScreen> {
         appBar: AppBar(
           title: const Text('열림알림'),
           actions: [
+            IconButton(
+              tooltip: '문화센터 바로가기',
+              onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const CultureCentersScreen())),
+              icon: const Icon(Icons.storefront_outlined),
+            ),
             IconButton(onPressed: _showDiagnostics, icon: const Icon(Icons.info_outline)),
             IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
             IconButton(
