@@ -28,8 +28,13 @@ class NotificationService {
   /// 데이터/알람 일시는 전부 KST(서울 강좌) — 기기 TZ와 무관하게 고정.
   /// 첫 호출의 Future를 캐시해, 앱 시작 시 addPostFrameCallback과 feed 경로가 거의 동시에
   /// init()을 불러도 initialize가 딱 한 번만 실행되게 한다(중복 초기화 race 방지).
+  /// 실패하면 캐시를 비워 다음 호출이 재시도할 수 있게 한다 — 실패 Future가 캐시되면
+  /// 그 세션 내내 알림 기능이 죽어버리는 것을 방지.
   static Future<void> init() {
-    return _initFuture ??= _doInit();
+    return _initFuture ??= _doInit().catchError((e) {
+      _initFuture = null; // 다음 init()에서 재시도 가능
+      throw e;
+    });
   }
 
   static Future<void> _doInit() async {
@@ -42,11 +47,15 @@ class NotificationService {
       onDidReceiveNotificationResponse: _onTap,
     );
     // 앱이 종료된 상태에서 알림 탭으로 실행된 경우, 그 payload(딥링크)를 처리.
-    final launch = await _plugin.getNotificationAppLaunchDetails();
-    if (launch?.didNotificationLaunchApp ?? false) {
-      final resp = launch!.notificationResponse;
-      if (resp != null) _onTap(resp);
-    }
+    // 이건 부가기능(best-effort)이라 자체 try-catch로 격리 — 여기서 실패해도 이미 성공한
+    // _plugin.initialize()(핵심 알림 초기화)까지 무효화되면 안 됨(일부 OEM에서 이 API가 던짐).
+    try {
+      final launch = await _plugin.getNotificationAppLaunchDetails();
+      if (launch?.didNotificationLaunchApp ?? false) {
+        final resp = launch!.notificationResponse;
+        if (resp != null) _onTap(resp);
+      }
+    } catch (_) {/* cold-start 딥링크만 유실, 알림 기능은 정상 */}
   }
 
   static const _testAlarmId = 999999901; // 진단용 테스트 알람 id (재예약 취소에서 제외)

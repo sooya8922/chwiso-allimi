@@ -23,7 +23,9 @@ class HomeScreen extends StatefulWidget {
   /// 알림/백그라운드 초기화 오류(진단용 배너). null이면 정상.
   final ValueListenable<String?>? initError;
 
-  /// 현재 시각 공급자 — 테스트에서 고정 시각 주입용(기본 = kstNow)
+  /// 현재 시각 공급자 — 테스트에서 고정 시각 주입용.
+  /// 표시 로직(build)은 kstNow, 라이프사이클 경과시간 판정은 DateTime.now를 기본으로 쓴다
+  /// (후자는 경과 밀리초만 보므로 TZ 무관 — 두 기본값 차이는 무해).
   final DateTime Function()? clock;
 
   const HomeScreen(
