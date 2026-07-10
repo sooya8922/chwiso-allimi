@@ -15,10 +15,12 @@ import 'feed_parse_test.dart' show sampleFeed;
 
 class FakeFeedService extends FeedService {
   final bool fail;
+  int loadCount = 0;
   FakeFeedService({this.fail = false});
 
   @override
   Future<({Feed feed, bool fromCache})> load() async {
+    loadCount++;
     if (fail) throw Exception('offline');
     return (feed: Feed.fromJson(json.decode(sampleFeed) as Map<String, dynamic>), fromCache: false);
   }
@@ -96,6 +98,34 @@ void main() {
     await tester.tap(find.text('오픈예정'));
     await tester.pumpAndSettle();
     expect(find.textContaining('가드닝'), findsNothing, reason: '이미 오픈 → 예정 목록에서 제거');
+  });
+
+  testWidgets('포그라운드 복귀 시 자동 새로고침(MAJOR-6) — 3분 가드 반영', (tester) async {
+    // 주입 시계를 앞으로 당겨 3분 가드 통과를 재현
+    var clock = DateTime(2026, 7, 10, 9, 0);
+    final feedSvc = FakeFeedService();
+    await tester.pumpWidget(MaterialApp(
+      home: HomeScreen(feedService: feedSvc, prefsService: FakePrefsService(), clock: () => clock),
+    ));
+    await tester.pump();
+    await tester.pump();
+    final afterInit = feedSvc.loadCount;
+    expect(afterInit, greaterThanOrEqualTo(1));
+
+    // 1) 즉시 복귀(가드 3분 미만) → 새로고침 없음
+    clock = DateTime(2026, 7, 10, 9, 1);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(feedSvc.loadCount, afterInit, reason: '3분 내 복귀는 스킵');
+
+    // 2) 5분 뒤 복귀 → 새로고침 발생
+    clock = DateTime(2026, 7, 10, 9, 6);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+    expect(feedSvc.loadCount, greaterThan(afterInit), reason: '3분 경과 복귀는 새로고침');
   });
 
   testWidgets('실패 경로(오프라인 첫 실행): 크래시 없이 오류 UI + 다시 시도', (tester) async {

@@ -11,7 +11,7 @@ import '../logic/notif_planner.dart';
 
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
-  static bool _inited = false;
+  static Future<void>? _initFuture; // 동시 진입해도 initialize를 한 번만(Completer 대신 Future 캐시)
 
   static const _instantChannel = AndroidNotificationDetails(
     'instant', '새 강좌·재오픈 알림',
@@ -26,8 +26,13 @@ class NotificationService {
   );
 
   /// 데이터/알람 일시는 전부 KST(서울 강좌) — 기기 TZ와 무관하게 고정.
-  static Future<void> init() async {
-    if (_inited) return;
+  /// 첫 호출의 Future를 캐시해, 앱 시작 시 addPostFrameCallback과 feed 경로가 거의 동시에
+  /// init()을 불러도 initialize가 딱 한 번만 실행되게 한다(중복 초기화 race 방지).
+  static Future<void> init() {
+    return _initFuture ??= _doInit();
+  }
+
+  static Future<void> _doInit() async {
     tzdata.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Asia/Seoul'));
     await _plugin.initialize(
@@ -36,7 +41,12 @@ class NotificationService {
       ),
       onDidReceiveNotificationResponse: _onTap,
     );
-    _inited = true;
+    // 앱이 종료된 상태에서 알림 탭으로 실행된 경우, 그 payload(딥링크)를 처리.
+    final launch = await _plugin.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp ?? false) {
+      final resp = launch!.notificationResponse;
+      if (resp != null) _onTap(resp);
+    }
   }
 
   static const _testAlarmId = 999999901; // 진단용 테스트 알람 id (재예약 취소에서 제외)

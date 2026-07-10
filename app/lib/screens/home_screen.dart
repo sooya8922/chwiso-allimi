@@ -33,7 +33,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final FeedService _feedSvc = widget.feedService ?? FeedService();
   late final PrefsService _prefsSvc = widget.prefsService ?? PrefsService();
 
@@ -42,11 +42,32 @@ class _HomeScreenState extends State<HomeScreen> {
   Object? _error;
   Subscription _sub = const Subscription();
   QuietConfig _quiet = const QuietConfig();
+  DateTime? _lastRefresh; // 포그라운드 복귀 시 과도한 새로고침 방지용
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _init();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 백그라운드→포그라운드 복귀 시 최신 feed로 갱신(알림 탭으로 복귀 등).
+    // 단 3분 내 재개는 스킵 — 화면 전환 반복에 매번 네트워크 치지 않도록.
+    if (state == AppLifecycleState.resumed) {
+      final last = _lastRefresh;
+      final now = (widget.clock ?? DateTime.now)();
+      if (last == null || now.difference(last).inMinutes >= 3) {
+        _refresh();
+      }
+    }
   }
 
   bool _refreshing = false;
@@ -70,6 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _feed = r.feed;
         _fromCache = r.fromCache;
       });
+      _lastRefresh = (widget.clock ?? DateTime.now)();
       // 알림 재계획(주입된 경우만). 실패해도 화면은 정상 동작해야 하므로 삼킨다.
       try {
         await widget.onFeedLoaded?.call(r.feed);
