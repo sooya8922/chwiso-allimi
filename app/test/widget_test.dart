@@ -57,7 +57,7 @@ void main() {
     await tester.pump(); // _init 완료
     await tester.pump();
 
-    expect(find.text('강좌알리미'), findsOneWidget);
+    expect(find.text('강좌 알리미'), findsOneWidget);
     // sampleFeed의 접수중 강좌(S1)가 보이고, 마감(S3)은 접수중 탭에 없음
     expect(find.textContaining('반딧불이 해설'), findsOneWidget);
     expect(find.textContaining('뜨개모자'), findsNothing);

@@ -254,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('강좌알리미'),
+          title: const Text('강좌 알리미'),
           actions: [
             IconButton(
               tooltip: '문화센터 바로가기',
