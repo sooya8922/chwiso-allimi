@@ -149,13 +149,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     var exact = '확인 불가';
     var pending = '확인 불가';
     var canExactNow = false;
-    var nextAlarms = <String>[];
     try {
       canExactNow = await NotificationService.canExact();
       exact = canExactNow ? '✅ 허용 — 정시에 울림' : '⚠️ 미허용 — 몇 분 늦을 수 있음';
       final list = await NotificationService.pendingList();
       pending = '${list.length}개';
-      nextAlarms = list.take(8).map((p) => '${p.title ?? ''}  ${p.body ?? ''}'.trim()).toList();
     } catch (e) {
       exact = '오류: $e';
     }
@@ -170,20 +168,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('알림 진단', style: Theme.of(ctx).textTheme.titleLarge),
+              Text('알림 상태', style: Theme.of(ctx).textTheme.titleLarge),
               const SizedBox(height: 12),
-              Text('기기 시각(KST): ${kstNow().toString().substring(0, 16)}'),
-              Text('데이터 갱신: ${_feed?.generatedAt ?? '-'}  (하루 4회)'),
-              Text('정확 알람: $exact'),
+              Text('정시 알람: $exact'),
               Text('예약된 알람: $pending'),
-              if (nextAlarms.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                const Text('예약 목록(일부):', style: TextStyle(fontWeight: FontWeight.w600)),
-                ...nextAlarms.map((t) => Text('• $t', maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12))),
-              ],
+              const SizedBox(height: 8),
+              Text(
+                '알림이 오지 않으면 아래 버튼으로 테스트해보세요. '
+                '테스트 알람이 안 온다면 기기의 절전/배터리 설정에서 이 앱을 예외로 추가해주세요.',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
               const SizedBox(height: 16),
-              // 알람 전달 자체를 즉시 검증하는 도구 (M4: 예약됐는데 안 울리는 문제 진단)
+              // 알람 전달 자체를 즉시 검증하는 도구 (예약됐는데 안 울리는 문제 자가진단)
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
