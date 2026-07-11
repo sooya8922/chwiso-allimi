@@ -58,3 +58,18 @@ jobs:
           name: yeollim-allim-apk
           path: app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
+
+      # Play 스토어 업로드용 App Bundle(AAB). 같은 고정 업로드키로 서명.
+      # (Play App Signing이 앱서명키를 별도 관리하고, 우리가 올리는 건 업로드키 서명본)
+      - name: Build App Bundle (release, Play 업로드용)
+        run: flutter build appbundle --release
+        env:
+          KEYSTORE_PATH: /tmp/upload-keystore.p12
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yeollim-allim-aab
+          path: app/build/app/outputs/bundle/release/app-release.aab
+          retention-days: 14
