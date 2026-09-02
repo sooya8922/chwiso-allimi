@@ -1,92 +1,26 @@
-/// 알림 "계획" — 순수 함수만(플러그인/IO 없음, 단위테스트 대상).
+/// 강좌 알림 "계획" — 순수 함수만(플러그인/IO 없음, 단위테스트 대상).
 ///
 /// 두 종류의 알림을 계획한다:
 ///  1) 즉시 알림: 구독조건에 맞는 신규 등록/재오픈 — 중복 발송 방지(notified 셋)
 ///  2) 광클 알람: 구독조건에 맞는 접수 오픈예정 — 오픈 10분 전 정확 알람
+///
+/// 공용 타입(PlannedNotification/PlannedAlarm/QuietConfig/kstNow/inQuietHours/stableId)은
+/// core/로 이동했고, 여기서 re-export 한다 → 기존 import 경로(notif_planner.dart)가 그대로 동작.
 library;
 
+import '../core/notif_types.dart';
+import '../core/time.dart';
 import '../models/course.dart';
 import 'matcher.dart';
+
+export '../core/notif_types.dart'; // PlannedNotification, PlannedAlarm, stableId
+export '../core/time.dart'; // QuietConfig, kstNow, inQuietHours
 
 /// 광클 알람 리드타임(오픈 몇 분 전에 울릴지)
 const alarmLeadMin = 10;
 
 /// Android 정확알람 남발 방지 상한(가까운 순으로 자른다)
 const maxScheduledAlarms = 50;
-
-/// 즉시 알림 하나
-class PlannedNotification {
-  final String key; // 중복 방지 키 (예: "new_S123", "reopen_S123_2026-07-03 20:20")
-  final String title;
-  final String body;
-  final String url; // 탭 시 열 딥링크 (빈 문자열 가능)
-
-  const PlannedNotification({required this.key, required this.title, required this.body, required this.url});
-}
-
-/// 예약 알람 하나
-class PlannedAlarm {
-  final int id; // 플랫폼 알람 id (svcid에서 안정적으로 파생 — 재예약 시 같은 id로 덮어씀)
-  final String svcid;
-  final DateTime at;
-  final String title;
-  final String body;
-  final String url;
-
-  const PlannedAlarm(
-      {required this.id, required this.svcid, required this.at, required this.title, required this.body, required this.url});
-}
-
-/// 현재 KST 월클럭(naive) — 기기 TZ가 한국이 아니어도(해외여행 엣지) 데이터(KST)와 일관되게 비교.
-///
-/// 반드시 isUtc=false(naive)로 반환해야 한다. toUtc().add(9h)를 그대로 반환하면
-/// isUtc=true 깃발이 남아 naive로 파싱된 feed 시각과의 비교(epoch 기반)가 9시간 틀어진다
-/// — 오픈 9시간 이내 알람이 전부 삭제되고 9시간 경계의 알람이 즉시 발화하던
-/// M4 실기기 대참사(7/6 08:50 미발화, 7/7 05:59 조기발화)의 근본 원인.
-DateTime kstNow() {
-  final u = DateTime.now().toUtc().add(const Duration(hours: 9));
-  return DateTime(u.year, u.month, u.day, u.hour, u.minute, u.second);
-}
-
-/// 조용시간 설정 — 사용자가 지정(기본 22시~8시). 즉시알림(신규/재오픈)은 이 시간대에
-/// 발송하지 않고 다음 주간 확인 때로 미룬다(배치성 소식이라 늦어도 손해 없음 — M4 피드백).
-/// [alarmsExempt]=true(기본)면 ⏰ 광클 알람은 예외(자정 오픈을 잡으려고 건 알람은 울리는 게 목적),
-/// false면 알람도 조용시간에 걸리는 건 예약하지 않는다.
-class QuietConfig {
-  final bool enabled;
-  final int startHour; // 0~23
-  final int endHour; // 0~23 (start>end면 자정 걸침)
-  final bool alarmsExempt;
-
-  const QuietConfig({this.enabled = true, this.startHour = 22, this.endHour = 8, this.alarmsExempt = true});
-
-  Map<String, dynamic> toJson() =>
-      {'enabled': enabled, 'startHour': startHour, 'endHour': endHour, 'alarmsExempt': alarmsExempt};
-
-  factory QuietConfig.fromJson(Map<String, dynamic> j) => QuietConfig(
-        enabled: (j['enabled'] ?? true) as bool,
-        startHour: ((j['startHour'] ?? 22) as int).clamp(0, 23),
-        endHour: ((j['endHour'] ?? 8) as int).clamp(0, 23),
-        alarmsExempt: (j['alarmsExempt'] ?? true) as bool,
-      );
-
-  QuietConfig copyWith({bool? enabled, int? startHour, int? endHour, bool? alarmsExempt}) => QuietConfig(
-        enabled: enabled ?? this.enabled,
-        startHour: startHour ?? this.startHour,
-        endHour: endHour ?? this.endHour,
-        alarmsExempt: alarmsExempt ?? this.alarmsExempt,
-      );
-}
-
-/// 지금이 조용시간인가. 자정 걸침(22→8)과 안 걸침(13→18) 모두 지원.
-/// 엣지: start==end는 빈 창(조용시간 없음)으로 정의.
-bool inQuietHours(DateTime now, [QuietConfig cfg = const QuietConfig()]) {
-  if (!cfg.enabled || cfg.startHour == cfg.endHour) return false;
-  final h = now.hour;
-  return cfg.startHour < cfg.endHour
-      ? (h >= cfg.startHour && h < cfg.endHour)
-      : (h >= cfg.startHour || h < cfg.endHour);
-}
 
 /// 즉시알림이 한 번에 [threshold]건을 넘으면 요약 1건으로 묶는다 —
 /// 필터 없이 쓰는 사용자가 아침마다 수십 건 도배당하는 것 방지(M4 실기기 피드백).
@@ -125,16 +59,6 @@ String leadLabel(DateTime? openAt, DateTime now) {
   if (min < 60) return '$min분 후';
   if (min < 1440) return '${(min / 60).round()}시간 후';
   return '${(min / 1440).round()}일 후';
-}
-
-/// svcid → 안정적 32비트 양수 id (dart String.hashCode는 실행마다 달라질 수 있어 직접 FNV-1a)
-int stableId(String svcid) {
-  var h = 0x811c9dc5;
-  for (final c in svcid.codeUnits) {
-    h ^= c;
-    h = (h * 0x01000193) & 0x7fffffff;
-  }
-  return h & 0x7fffffff; // 빈 문자열이면 루프 미실행 → 시드가 31비트 초과(음수화) → 반환 시 마스킹
 }
 
 /// 즉시 알림 계획 결과.
@@ -228,7 +152,9 @@ List<PlannedAlarm> planAlarms(Feed feed, Subscription sub, DateTime now) {
     // 날짜는 절대 표기(M/D) — '오늘/내일' 같은 상대 표현은 예약 시점과 발화 시점이
     // 달라서(며칠 전 예약 → 당일 발화) 울리는 순간에 거짓말이 된다(엣지).
     out.add(PlannedAlarm(
-      id: stableId(u.id),
+      // 알람 id도 도메인 프리픽스로 파생 → 강좌 즉시알림('c:new_'…)·나들이('e:'…)와 id 공간을
+      // 확실히 분리(교집합 0). 재예약은 pending 전체취소 후 재생성이라 업그레이드 시에도 안전.
+      id: stableId('c:alarm:${u.id}'),
       svcid: u.id,
       at: fireAt,
       title: '⏰ ${openAt.month}/${openAt.day} $hh:$mm 접수 시작!',

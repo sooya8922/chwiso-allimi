@@ -8,3 +8,6 @@ highres.log
 validation4.db
 validation4.log
 .signing/
+# 빌드 산출물(CI가 생성) — 절대 커밋 금지
+*.aab
+*.apk

@@ -1,37 +1,23 @@
-/// 백그라운드 갱신 — workmanager 주기 작업(6시간).
-/// 파이프라인이 하루 4회 feed를 갱신하므로 6시간 주기면 놓침 없이 따라간다.
+/// 강좌 도메인 갱신 루틴 — 포그라운드(앱 열림)와 백그라운드(core 오케스트레이터) 양쪽에서 호출.
 ///
 /// 한 번의 실행에서: feed fetch → 즉시알림(신규/재오픈) 발송 → 광클 알람 재예약.
-/// 앱을 열 때도 같은 replan이 돌므로(홈 화면), 백그라운드는 보조 경로다.
+/// 워크매니저 등록/진입점은 core/background.dart가 단일 관리한다(나들이와 통합).
+///
+/// prefs 키는 통합 후에도 강좌 전용으로 유지(notified_keys_v1 / notify_run_ts_v1) —
+/// 기존 v1.0 사용자 상태를 그대로 보존한다. 나들이는 별도 네임스페이스 키를 쓴다.
 library;
 
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:workmanager/workmanager.dart';
 
+import '../core/notification_service.dart';
 import '../logic/notif_planner.dart';
 import '../models/course.dart';
 import 'feed_service.dart';
-import 'notification_service.dart';
 import 'prefs_service.dart';
 
-const _taskName = 'feed_refresh';
 const _notifiedKey = 'notified_keys_v1';
-
-/// 백그라운드 isolate 진입점 — 반드시 top-level + vm:entry-point.
-@pragma('vm:entry-point')
-void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    try {
-      await refreshAndNotify();
-      return true;
-    } catch (_) {
-      return false; // 실패 → workmanager 재시도 정책에 맡김
-    }
-  });
-}
-
 const _lastRunKey = 'notify_run_ts_v1';
 
 /// 공용 갱신 루틴 — 포그라운드(앱 열림)와 백그라운드 양쪽에서 호출.
@@ -75,7 +61,7 @@ Future<void> refreshAndNotify({Feed? preloaded, DateTime? now}) async {
     if (storedRaw != null) {
       // 평상시: 새 이벤트만 발송 (폭주 시 요약 1건으로 묶음)
       for (final n in summarizeBurst(plan.toShow)) {
-        await NotificationService.showInstant(n);
+        await NotificationService.showInstant(n, kind: NotifKind.courseInstant);
       }
     }
   }
@@ -84,16 +70,4 @@ Future<void> refreshAndNotify({Feed? preloaded, DateTime? now}) async {
   // 조용시간 정책: alarmsExempt(기본)면 알람은 그대로, 아니면 조용시간 발화분 제거
   final alarms = applyQuietToAlarms(planAlarms(feed, sub, nowKst), quietCfg);
   await NotificationService.rescheduleAlarms(alarms);
-}
-
-/// 주기 작업 등록 — 앱 시작 시 1회 호출(중복 등록은 replace로 무해).
-Future<void> registerBackgroundRefresh() async {
-  await Workmanager().initialize(callbackDispatcher);
-  await Workmanager().registerPeriodicTask(
-    _taskName, _taskName,
-    frequency: const Duration(hours: 6),
-    constraints: Constraints(networkType: NetworkType.connected),
-    existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
-    backoffPolicy: BackoffPolicy.linear,
-  );
 }

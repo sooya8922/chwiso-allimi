@@ -1,14 +1,13 @@
-// FilterSheet 위젯 테스트 — 키워드 파싱, 조용시간 토글/시각, 초기화 (커버리지 0%였던 영역).
+// FilterSheet 위젯 테스트 — 키워드 파싱, 지역/무료 토글, 유령지역 제거, 초기화.
+// (조용시간은 '설정' 탭으로 이동 → settings_test.dart가 커버)
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yeollim_allim/logic/matcher.dart';
-import 'package:yeollim_allim/logic/notif_planner.dart';
 import 'package:yeollim_allim/widgets/filter_sheet.dart';
 
 Future<FilterResult?> openAndApply(
   WidgetTester tester, {
   Subscription initial = const Subscription(),
-  QuietConfig quiet = const QuietConfig(),
   Future<void> Function(WidgetTester t)? interact,
 }) async {
   FilterResult? result;
@@ -20,8 +19,8 @@ Future<FilterResult?> openAndApply(
             result = await showModalBottomSheet<FilterResult>(
               context: ctx,
               isScrollControlled: true,
-              builder: (_) => FilterSheet(
-                  initial: initial, initialQuiet: quiet, availableAreas: const ['마포구', '강서구']),
+              builder: (_) =>
+                  FilterSheet(initial: initial, availableAreas: const ['마포구', '강서구']),
             );
           },
           child: const Text('open'),
@@ -73,17 +72,6 @@ void main() {
     expect(r!.sub.areas, {'강서구'});
   });
 
-  testWidgets('조용시간 끄면 알람 예외 스위치 비활성', (tester) async {
-    final r = await openAndApply(tester, interact: (t) async {
-      final sw = find.text('조용시간 사용'); // 시트 최하단(지연 로딩) → scrollUntilVisible
-      await t.scrollUntilVisible(sw, 300, scrollable: find.byType(Scrollable).first);
-      await t.pumpAndSettle();
-      await t.tap(sw); // ON→OFF
-      await t.pumpAndSettle();
-    });
-    expect(r!.quiet.enabled, false);
-  });
-
   testWidgets('MINOR-2: feed에 없는 저장 지역(유령)은 제거되어 반환', (tester) async {
     // '도봉구'는 availableAreas(마포/강서)에 없음 → 교집합으로 걸러져야
     const init = Subscription(areas: {'마포구', '도봉구'});
@@ -91,23 +79,12 @@ void main() {
     expect(r!.sub.areas, {'마포구'}, reason: '유령 지역 도봉구 제거');
   });
 
-  testWidgets('MEDIUM-2: 조용시간 start==end면 경고 문구 노출', (tester) async {
-    await openAndApply(tester,
-        quiet: const QuietConfig(startHour: 22, endHour: 22),
-        interact: (t) async {
-      final warn = find.textContaining('적용되지 않아요');
-      await t.scrollUntilVisible(warn, 300, scrollable: find.byType(Scrollable).first);
-      expect(warn, findsOneWidget);
-    });
-  });
-
-  testWidgets('초기화 버튼 → 모든 조건 리셋', (tester) async {
+  testWidgets('초기화 버튼 → 모든 구독조건 리셋', (tester) async {
     const init = Subscription(areas: {'마포구'}, freeOnly: true, keywords: ['체험']);
     final r = await openAndApply(tester, initial: init, interact: (t) async {
       await t.tap(find.text('초기화'));
       await t.pumpAndSettle();
     });
     expect(r!.sub.isEmpty, true);
-    expect(r.quiet.enabled, true, reason: '초기화는 조용시간도 기본값으로');
   });
 }

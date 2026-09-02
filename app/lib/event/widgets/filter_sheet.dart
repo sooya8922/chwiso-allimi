@@ -2,29 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../logic/matcher.dart';
 
-/// 필터 시트 결과 — 구독조건만. (조용시간은 '설정' 탭으로 이동)
+/// 필터 시트 결과 — 구독조건만. (조용시간·다이제스트는 '설정' 탭으로 이동)
 typedef FilterResult = ({Subscription sub});
 
 /// 구독조건 편집 바텀시트. 저장은 호출측(HomeScreen)이 한다.
 class FilterSheet extends StatefulWidget {
   final Subscription initial;
-  final List<String> availableAreas; // feed에서 추출한 실제 구 목록
 
-  const FilterSheet({super.key, required this.initial, required this.availableAreas});
+  const FilterSheet({super.key, required this.initial});
 
   @override
   State<FilterSheet> createState() => _FilterSheetState();
 }
 
 class _FilterSheetState extends State<FilterSheet> {
-  // 현재 feed에 없는 저장된 지역은 칩이 안 그려져 보이지도/해제도 못 함(유령 필터) → 교집합만 유지.
-  late Set<String> areas = widget.initial.areas.intersection(widget.availableAreas.toSet());
+  static const allAreas = ['서울', '경기', '인천'];
+
+  late Set<String> areas = {...widget.initial.areas};
+  late bool kidOnly = widget.initial.kidOnly;
   late bool freeOnly = widget.initial.freeOnly;
-  late Set<String> targets = {...widget.initial.targets};
   late final TextEditingController kwCtrl =
       TextEditingController(text: widget.initial.keywords.join(', '));
-
-  static const targetLabels = {'kids': '어린이·가족', 'adult': '성인', 'senior': '시니어'};
 
   @override
   void dispose() {
@@ -35,8 +33,8 @@ class _FilterSheetState extends State<FilterSheet> {
   FilterResult _build() => (
         sub: Subscription(
           areas: areas,
+          kidOnly: kidOnly,
           freeOnly: freeOnly,
-          targets: targets,
           keywords: kwCtrl.text
               .split(RegExp(r'[,\s]+'))
               .map((s) => s.trim())
@@ -49,7 +47,7 @@ class _FilterSheetState extends State<FilterSheet> {
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.75,
+      initialChildSize: 0.7,
       builder: (ctx, scroll) => Column(
         children: [
           Expanded(
@@ -57,11 +55,18 @@ class _FilterSheetState extends State<FilterSheet> {
               controller: scroll,
               padding: const EdgeInsets.all(20),
               children: [
-                Text('알림 조건', style: Theme.of(ctx).textTheme.titleLarge),
+                Text('보기·알림 조건', style: Theme.of(ctx).textTheme.titleLarge),
                 const SizedBox(height: 4),
-                Text('조건에 맞는 강좌가 새로 열리면 알려드려요. 비워두면 전체.',
+                Text('목록과 알림 모두에 적용돼요. 비워두면 전체.',
                     style: TextStyle(fontSize: 13, color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('아이 관련 행사만'),
+                  subtitle: const Text('아동공연·가족행사 등만 보여요 (끄면 전체 행사)', style: TextStyle(fontSize: 12)),
+                  value: kidOnly,
+                  onChanged: (v) => setState(() => kidOnly = v),
+                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('무료만'),
@@ -69,16 +74,16 @@ class _FilterSheetState extends State<FilterSheet> {
                   onChanged: (v) => setState(() => freeOnly = v),
                 ),
                 const SizedBox(height: 8),
-                const Text('대상', style: TextStyle(fontWeight: FontWeight.w600)),
+                Text('지역 (${areas.isEmpty ? '전체' : areas.join('·')})',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
-                  children: targetLabels.entries
-                      .map((e) => FilterChip(
-                            label: Text(e.value),
-                            selected: targets.contains(e.key),
-                            onSelected: (v) =>
-                                setState(() => v ? targets.add(e.key) : targets.remove(e.key)),
+                  children: allAreas
+                      .map((a) => FilterChip(
+                            label: Text(a),
+                            selected: areas.contains(a),
+                            onSelected: (v) => setState(() => v ? areas.add(a) : areas.remove(a)),
                           ))
                       .toList(),
                 ),
@@ -88,22 +93,7 @@ class _FilterSheetState extends State<FilterSheet> {
                 TextField(
                   controller: kwCtrl,
                   decoration: const InputDecoration(
-                      hintText: '예: 방학 원예 목공 (쉼표·띄어쓰기로 구분)', border: OutlineInputBorder(), isDense: true),
-                ),
-                const SizedBox(height: 16),
-                Text('지역 (${areas.isEmpty ? '전체' : '${areas.length}개'})',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: widget.availableAreas
-                      .map((a) => FilterChip(
-                            label: Text(a, style: const TextStyle(fontSize: 12)),
-                            selected: areas.contains(a),
-                            onSelected: (v) => setState(() => v ? areas.add(a) : areas.remove(a)),
-                          ))
-                      .toList(),
+                      hintText: '예: 인형극 박물관 체험', border: OutlineInputBorder(), isDense: true),
                 ),
               ],
             ),
@@ -116,7 +106,7 @@ class _FilterSheetState extends State<FilterSheet> {
                   TextButton(
                     onPressed: () => setState(() {
                       areas.clear();
-                      targets.clear();
+                      kidOnly = true;
                       freeOnly = false;
                       kwCtrl.clear();
                     }),

@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import '../logic/matcher.dart';
 import '../logic/notif_planner.dart';
 import '../models/course.dart';
+import '../core/notification_service.dart';
 import '../services/feed_service.dart';
-import '../services/notification_service.dart';
 import '../services/prefs_service.dart';
 import '../widgets/course_card.dart';
 import '../widgets/filter_sheet.dart';
@@ -43,7 +43,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _fromCache = false;
   Object? _error;
   Subscription _sub = const Subscription();
-  QuietConfig _quiet = const QuietConfig();
   DateTime? _lastRefresh; // 포그라운드 복귀 시 과도한 새로고침 방지용
 
   @override
@@ -78,7 +77,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // prefs 로드 실패(일부 OEM 저장소 이슈)여도 기본값으로 진행 — 무한 로딩 스피너 방지.
     try {
       _sub = await _prefsSvc.load();
-      _quiet = await _prefsSvc.loadQuiet();
     } catch (_) {/* 필드 기본값 사용 */}
     await _refresh();
   }
@@ -117,16 +115,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => FilterSheet(initial: _sub, initialQuiet: _quiet, availableAreas: _areas),
+      builder: (_) => FilterSheet(initial: _sub, availableAreas: _areas),
     );
     if (result != null) {
       setState(() {
         _sub = result.sub;
-        _quiet = result.quiet;
       });
       try {
         await _prefsSvc.save(result.sub);
-        await _prefsSvc.saveQuiet(result.quiet);
       } catch (_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
