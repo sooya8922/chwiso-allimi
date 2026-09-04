@@ -11,7 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 List<String> buildMapCandidates(double lng, double lat) {
   return [
     'kakaomap://look?p=$lat,$lng',
-    'nmap://place?lat=$lat&lng=$lng&name=%EB%82%98%EB%93%A4%EC%9D%B4%20%EC%9C%84%EC%B9%98&appname=com.sooya8922.naduri',
+    'nmap://place?lat=$lat&lng=$lng&name=%EB%82%98%EB%93%A4%EC%9D%B4%20%EC%9C%84%EC%B9%98&appname=com.sooya8922.yeollim',
     'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
   ];
 }
@@ -22,7 +22,7 @@ List<String> buildRouteCandidates(double lng, double lat, String name) {
   final n = Uri.encodeQueryComponent(name.isEmpty ? '나들이 목적지' : name);
   return [
     'kakaomap://route?ep=$lat,$lng&by=PUBLICTRANSIT',
-    'nmap://route/public?dlat=$lat&dlng=$lng&dname=$n&appname=com.sooya8922.naduri',
+    'nmap://route/public?dlat=$lat&dlng=$lng&dname=$n&appname=com.sooya8922.yeollim',
     'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=transit',
   ];
 }

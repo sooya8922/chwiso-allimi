@@ -1,7 +1,7 @@
 name: yeollim_allim
 description: "강좌·나들이 알리미 — 서울 공공강좌 접수 알림 + 수도권 아이 나들이 행사 알림"
 publish_to: "none"
-version: 0.5.8+30
+version: 0.5.9+31
 
 environment:
   sdk: ^3.5.0

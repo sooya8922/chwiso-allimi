@@ -71,4 +71,47 @@ void main() {
       expect(r[0], 'kakaomap://look?p=37.566,126.977');
     });
   });
+
+  group('buildRouteCandidates (길 찾기)', () {
+    final r = buildRouteCandidates(126.9, 37.5, '서울시청 강좌');
+
+    test('우선순위: 카카오 → 네이버 → 구글(3개)', () {
+      expect(r.length, 3);
+      expect(r[0], startsWith('kakaomap://route'));
+      expect(r[1], startsWith('nmap://route/public'));
+      expect(r[2], startsWith('https://www.google.com/maps/dir'));
+    });
+
+    test('카카오 대중교통 경로: 도착지 위도,경도 + PUBLICTRANSIT', () {
+      expect(r[0], 'kakaomap://route?ep=37.5,126.9&by=PUBLICTRANSIT');
+    });
+
+    test('네이버 대중교통: dlat/dlng + 인코딩된 도착지명 + appname(현재 패키지)', () {
+      final n = Uri.parse(r[1]);
+      expect(n.queryParameters['dlat'], '37.5');
+      expect(n.queryParameters['dlng'], '126.9');
+      expect(n.queryParameters['dname'], '서울시청 강좌'); // 디코드되면 원문
+      expect(n.queryParameters['appname'], 'com.sooya8922.yeollim');
+    });
+
+    test('구글 웹: 대중교통 길찾기 최종 폴백', () {
+      expect(r[2], 'https://www.google.com/maps/dir/?api=1&destination=37.5,126.9&travelmode=transit');
+    });
+
+    test('이름 특수문자/빈값에도 URL 유효(파싱 가능)', () {
+      for (final cand in [
+        buildRouteCandidates(126.9, 37.5, '아이 & 가족 (무료)'),
+        buildRouteCandidates(126.9, 37.5, ''),
+      ]) {
+        for (final u in cand) {
+          expect(() => Uri.parse(u), returnsNormally, reason: u);
+        }
+      }
+    });
+
+    test('빈 이름이면 기본 도착지명으로 대체', () {
+      final e = Uri.parse(buildRouteCandidates(126.9, 37.5, '')[1]);
+      expect(e.queryParameters['dname'], '강좌 장소');
+    });
+  });
 }
